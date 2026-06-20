@@ -6,6 +6,7 @@ import { dcasStats } from "@/lib/dcasSchema";
 import { computeIpad } from "@/lib/ipadCalc";
 import { segmentStats } from "@/lib/macCalc";
 import { StatusBadge, ChecksPanel } from "@/components/Procedability";
+import { DeletePropertyButton } from "@/components/DeletePropertyButton";
 import { gbp, num, pct, sqftToSqmDisplay } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -64,6 +65,7 @@ export default async function PropertyOverview({ params }: { params: { id: strin
           <div className="flex items-center gap-3">
             <StatusBadge status={result.status} />
             <span className="text-sm text-ink-muted">{result.headline}</span>
+            <DeletePropertyButton id={p.id} name={p.name} />
           </div>
         </div>
       </div>

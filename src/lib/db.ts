@@ -66,6 +66,15 @@ export async function updateProperty(id: string, patch: Partial<Property>): Prom
   await db.collection(COLLECTION).doc(id).set(clean, { merge: true });
 }
 
+export async function deleteProperty(id: string): Promise<void> {
+  const db = getDb();
+  if (!db) {
+    memStore().delete(id);
+    return;
+  }
+  await db.collection(COLLECTION).doc(id).delete();
+}
+
 export async function saveDcas(id: string, dcas: Dcas) {
   await updateProperty(id, { dcas: { ...dcas, updatedAt: now() } });
 }

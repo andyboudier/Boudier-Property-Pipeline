@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import type { ProcedabilityStatus } from "@/lib/types";
 import { statusMeta } from "@/lib/procedability";
+import { actionDeleteProperty } from "@/app/actions";
 import { StatusBadge } from "./Procedability";
 import { gbp, num, pct } from "@/lib/format";
 
@@ -94,6 +96,7 @@ export function SearchTable({ rows }: { rows: Row[] }) {
               <th className="px-4 py-2.5 font-medium">Profit/GDV</th>
               <th className="px-4 py-2.5 font-medium">Stages</th>
               <th className="px-4 py-2.5 font-medium">Procedable</th>
+              <th className="px-4 py-2.5 font-medium"><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
@@ -128,11 +131,14 @@ export function SearchTable({ rows }: { rows: Row[] }) {
                 <td className="px-4 py-3">
                   <StatusBadge status={r.status} size="sm" />
                 </td>
+                <td className="px-4 py-3 text-right">
+                  <DeleteButton id={r.id} name={r.name} />
+                </td>
               </tr>
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center text-sm text-ink-muted">
+                <td colSpan={8} className="px-4 py-12 text-center text-sm text-ink-muted">
                   No sites match your search.
                 </td>
               </tr>
@@ -141,6 +147,40 @@ export function SearchTable({ rows }: { rows: Row[] }) {
         </table>
       </div>
     </section>
+  );
+}
+
+function DeleteButton({ id, name }: { id: string; name: string }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+
+  function onDelete() {
+    const ok = window.confirm(
+      `Delete "${name}" from the pipeline?\n\nThis permanently removes the site and its DCAS / MAC / IPAD data. This cannot be undone.`,
+    );
+    if (!ok) return;
+    startTransition(async () => {
+      await actionDeleteProperty(id);
+      router.refresh();
+    });
+  }
+
+  return (
+    <button
+      onClick={onDelete}
+      disabled={pending}
+      title={`Delete ${name}`}
+      aria-label={`Delete ${name}`}
+      className="rounded p-1.5 text-ink-muted opacity-0 transition hover:bg-status-stop/10 hover:text-status-stop focus:opacity-100 group-hover:opacity-100 disabled:opacity-100"
+    >
+      {pending ? (
+        <span className="text-xs">…</span>
+      ) : (
+        <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M3 5h14M8 5V3.5A1.5 1.5 0 0 1 9.5 2h1A1.5 1.5 0 0 1 12 3.5V5m2 0v11a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V5M8.5 8.5v6M11.5 8.5v6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )}
+    </button>
   );
 }
 

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import type { Dcas, Ipad, Mac, Property, ProcedabilitySettings } from "@/lib/types";
 import {
   createProperty,
+  deleteProperty,
   getProperty,
   saveDcas,
   saveIpad,
@@ -44,6 +45,13 @@ export async function actionCreateProperty(p: Omit<Property, "id">) {
   const id = await createProperty(p);
   revalidatePath(`/`);
   return { ok: true, id };
+}
+
+export async function actionDeleteProperty(id: string) {
+  await deleteProperty(id);
+  revalidatePath(`/`);
+  revalidatePath(`/property/${id}`);
+  return { ok: true };
 }
 
 export async function actionSaveSettings(s: ProcedabilitySettings) {
