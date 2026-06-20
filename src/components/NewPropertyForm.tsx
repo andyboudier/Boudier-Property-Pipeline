@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import type { Property } from "@/lib/types";
-import { actionCreateProperty, actionImportListing } from "@/app/actions";
+import { actionCreateProperty, actionImportListing, actionUpdateProperty } from "@/app/actions";
 
 type Draft = Omit<Property, "id" | "dcas" | "mac" | "ipad" | "createdAt" | "updatedAt">;
 
@@ -29,9 +29,10 @@ const EMPTY: Draft = {
 
 type Msg = { kind: "ok" | "warn" | "err"; text: string };
 
-export function NewPropertyForm() {
+export function NewPropertyForm({ propertyId, initial }: { propertyId?: string; initial?: Draft } = {}) {
   const router = useRouter();
-  const [d, setD] = useState<Draft>(EMPTY);
+  const editing = !!propertyId;
+  const [d, setD] = useState<Draft>(initial ?? EMPTY);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -92,8 +93,14 @@ export function NewPropertyForm() {
     const pricePerSqFt =
       d.pricePerSqFt ?? (d.guidePrice && d.sizeSqFt ? Math.round(d.guidePrice / d.sizeSqFt) : null);
     startTransition(async () => {
-      const res = await actionCreateProperty({ ...d, pricePerSqFt });
-      if (res?.id) router.push(`/property/${res.id}`);
+      if (editing) {
+        await actionUpdateProperty(propertyId!, { ...d, pricePerSqFt });
+        router.push(`/property/${propertyId}`);
+        router.refresh();
+      } else {
+        const res = await actionCreateProperty({ ...d, pricePerSqFt });
+        if (res?.id) router.push(`/property/${res.id}`);
+      }
     });
   }
 
@@ -101,7 +108,8 @@ export function NewPropertyForm() {
 
   return (
     <div className="space-y-5">
-      {/* Import from a listing */}
+      {/* Import from a listing (create only) */}
+      {!editing && (
       <section className="card border-bronze/40 p-5">
         <h2 className="font-serif text-lg text-ink">Import from a listing</h2>
         <p className="mt-1 text-xs text-ink-muted">
@@ -146,6 +154,7 @@ export function NewPropertyForm() {
           </div>
         )}
       </section>
+      )}
 
       <section className="card p-5">
         <h2 className="font-serif text-lg text-ink">Site</h2>
@@ -201,8 +210,13 @@ export function NewPropertyForm() {
       {error && <p className="text-sm text-status-stop">{error}</p>}
 
       <div className="flex justify-end gap-2">
+        {editing && (
+          <button onClick={() => router.push(`/property/${propertyId}`)} className="btn-ghost">
+            Cancel
+          </button>
+        )}
         <button onClick={submit} disabled={pending} className="btn-bronze disabled:opacity-60">
-          {pending ? "Creating…" : "Create site & open"}
+          {pending ? (editing ? "Saving…" : "Creating…") : editing ? "Save changes" : "Create site & open"}
         </button>
       </div>
     </div>

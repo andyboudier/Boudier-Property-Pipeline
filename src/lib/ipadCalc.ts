@@ -70,6 +70,7 @@ export function defaultIpadInputs(partial?: Partial<IpadInputs>): IpadInputs {
 
     description: "",
     appraisalDate: todayISO(),
+    overrides: {},
     ...partial,
   };
 }
@@ -92,10 +93,15 @@ export interface IpadOutputs {
   profitOnCostPct: number;
   // line-level breakdown for display
   lines: { label: string; value: number; note?: string }[];
+  // actual £ amount used for each percentage-driven fee, keyed by its pct field
+  feeAmounts: Record<string, number>;
 }
 
 export function computeIpad(inp: IpadInputs): IpadOutputs {
   const area = inp.areaM2 || 0;
+  const ov = inp.overrides ?? {};
+  // Use a fixed £ override for a fee when present, otherwise the % calculation.
+  const fee = (key: string, computed: number) => (typeof ov[key] === "number" ? ov[key] : computed);
 
   // ── GDV & units ──
   const gdv = inp.units.reduce((s, u) => s + (u.totalGdv || 0), 0);
@@ -109,18 +115,18 @@ export function computeIpad(inp: IpadInputs): IpadOutputs {
   const commercial = area * inp.commercialRatePerM2;
   const industrial = area * inp.industrialRatePerM2;
   const newBuild = area * inp.newBuildRatePerM2;
-  const contingency = (commercial + industrial + newBuild + inp.landscaping + inp.otherCosts) * inp.contingencyPct;
+  const contingency = fee("contingencyPct", (commercial + industrial + newBuild + inp.landscaping + inp.otherCosts) * inp.contingencyPct);
   const constructionBase =
     inp.demolition + inp.asbestos + commercial + industrial + newBuild + inp.landscaping + inp.otherCosts + contingency + inp.utilities;
 
   // ── Construction fees (% of construction base) ──
-  const devMgmt = constructionBase * inp.devMgmtPct;
-  const planning = constructionBase * inp.planningPct;
-  const architect1 = constructionBase * inp.architect1Pct;
-  const architect2 = constructionBase * inp.architect2Pct;
-  const structural = constructionBase * inp.structuralPct;
-  const contractAdmin = constructionBase * inp.contractAdminPct;
-  const cdm = constructionBase * inp.cdmPct;
+  const devMgmt = fee("devMgmtPct", constructionBase * inp.devMgmtPct);
+  const planning = fee("planningPct", constructionBase * inp.planningPct);
+  const architect1 = fee("architect1Pct", constructionBase * inp.architect1Pct);
+  const architect2 = fee("architect2Pct", constructionBase * inp.architect2Pct);
+  const structural = fee("structuralPct", constructionBase * inp.structuralPct);
+  const contractAdmin = fee("contractAdminPct", constructionBase * inp.contractAdminPct);
+  const cdm = fee("cdmPct", constructionBase * inp.cdmPct);
 
   // ── Total construction/refurb (G46) ──
   const totalConstruction =
@@ -129,27 +135,27 @@ export function computeIpad(inp: IpadInputs): IpadOutputs {
     constructionBase + inp.accountancy + inp.vatOnCosts;
 
   // ── Finance — purchase ──
-  const privateCost = inp.privateFinance * inp.privateFinanceRatePerMonth * inp.privateFinanceMonths;
+  const privateCost = fee("privateFinanceRatePerMonth", inp.privateFinance * inp.privateFinanceRatePerMonth * inp.privateFinanceMonths);
   const commercialFinance = Math.max(totalPurchaseCosts - inp.privateFinance, 0); // G53
-  const commBridge = commercialFinance * inp.commBridgeRatePerMonth * inp.commBridgeMonths;
-  const commBroker = commercialFinance * inp.commBrokerPct;
-  const commAdmin = commercialFinance * inp.commAdminPct;
-  const commExit = commercialFinance * inp.commExitPct;
+  const commBridge = fee("commBridgeRatePerMonth", commercialFinance * inp.commBridgeRatePerMonth * inp.commBridgeMonths);
+  const commBroker = fee("commBrokerPct", commercialFinance * inp.commBrokerPct);
+  const commAdmin = fee("commAdminPct", commercialFinance * inp.commAdminPct);
+  const commExit = fee("commExitPct", commercialFinance * inp.commExitPct);
   const commercialFinanceCost = commBridge + commBroker + commAdmin + inp.commValuation + commExit; // G59
   const totalPurchaseFinance = commercialFinanceCost + privateCost; // G61
 
   // ── Finance — development ──
   const devLoan = totalConstruction; // G64
-  const devBridge = devLoan * inp.devBridgeRatePerMonth * inp.devBridgeMonths;
-  const devBroker = devLoan * inp.devBrokerPct;
-  const devAdmin = devLoan * inp.devAdminPct;
-  const devExit = devLoan * inp.devExitPct;
+  const devBridge = fee("devBridgeRatePerMonth", devLoan * inp.devBridgeRatePerMonth * inp.devBridgeMonths);
+  const devBroker = fee("devBrokerPct", devLoan * inp.devBrokerPct);
+  const devAdmin = fee("devAdminPct", devLoan * inp.devAdminPct);
+  const devExit = fee("devExitPct", devLoan * inp.devExitPct);
   const totalDevFinance = devBridge + devBroker + devAdmin + inp.devValuation + devExit; // G70
 
   const totalFinance = totalDevFinance + totalPurchaseFinance; // G72
 
   // ── Disposal ──
-  const totalDisposal = gdv * inp.agentSellingPct; // G74/G75
+  const totalDisposal = fee("agentSellingPct", gdv * inp.agentSellingPct); // G74/G75
 
   // ── Totals ──
   const totalCostOfDevelopment = totalDisposal + totalFinance + totalConstruction + totalPurchaseCosts; // G79
@@ -167,9 +173,34 @@ export function computeIpad(inp: IpadInputs): IpadOutputs {
     { label: "Total Purchase Finance", value: totalPurchaseFinance },
     { label: "Total Development Finance", value: totalDevFinance },
     { label: "Total Finance Costs", value: totalFinance },
-    { label: "Total Disposal Costs", value: totalDisposal, note: `${(inp.agentSellingPct * 100).toFixed(1)}% of GDV` },
+    {
+      label: "Total Disposal Costs",
+      value: totalDisposal,
+      note: typeof ov.agentSellingPct === "number" ? "fixed £" : `${(inp.agentSellingPct * 100).toFixed(1)}% of GDV`,
+    },
     { label: "Total Cost of Development", value: totalCostOfDevelopment },
   ];
+
+  const feeAmounts: Record<string, number> = {
+    contingencyPct: contingency,
+    devMgmtPct: devMgmt,
+    planningPct: planning,
+    architect1Pct: architect1,
+    architect2Pct: architect2,
+    structuralPct: structural,
+    contractAdminPct: contractAdmin,
+    cdmPct: cdm,
+    privateFinanceRatePerMonth: privateCost,
+    commBridgeRatePerMonth: commBridge,
+    commBrokerPct: commBroker,
+    commAdminPct: commAdmin,
+    commExitPct: commExit,
+    devBridgeRatePerMonth: devBridge,
+    devBrokerPct: devBroker,
+    devAdminPct: devAdmin,
+    devExitPct: devExit,
+    agentSellingPct: totalDisposal,
+  };
 
   return {
     gdv,
@@ -188,5 +219,6 @@ export function computeIpad(inp: IpadInputs): IpadOutputs {
     profitOnGdvPct,
     profitOnCostPct,
     lines,
+    feeAmounts,
   };
 }

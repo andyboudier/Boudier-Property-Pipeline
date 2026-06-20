@@ -85,6 +85,16 @@ export function IpadForm({ propertyId, initial }: { propertyId: string; initial:
     setInp((s) => ({ ...s, [key]: value }));
     setDirty(true);
   }
+  // Set a fixed £ override for a percentage fee (null clears it → back to %).
+  function setOverride(key: string, value: number | null) {
+    setInp((s) => {
+      const overrides = { ...(s.overrides ?? {}) };
+      if (value == null) delete overrides[key];
+      else overrides[key] = value;
+      return { ...s, overrides };
+    });
+    setDirty(true);
+  }
   function setUnit(id: string, patch: Partial<IpadUnit>) {
     setInp((s) => ({ ...s, units: s.units.map((u) => (u.id === id ? { ...u, ...patch } : u)) }));
     setDirty(true);
@@ -195,16 +205,23 @@ export function IpadForm({ propertyId, initial }: { propertyId: string; initial:
             <button onClick={addUnit} className="btn-ghost mt-2">+ Add unit line</button>
           </section>
 
-          <Group title="Purchase costs & fees" fields={PURCHASE} inp={inp} set={set} />
-          <Group title="Construction — direct costs" fields={CONSTRUCTION_DIRECT} inp={inp} set={set} note="Build rates multiply by developable area (m²). Contingency applies to build + landscaping + other." />
-          <Group title="Construction — professional fees (% of construction base)" fields={CONSTRUCTION_FEES} inp={inp} set={set} />
-          <Group title="Finance — purchase" fields={PURCHASE_FINANCE} inp={inp} set={set} />
-          <Group title="Finance — development" fields={DEV_FINANCE} inp={inp} set={set} />
+          <Group title="Purchase costs & fees" fields={PURCHASE} inp={inp} set={set} setOverride={setOverride} feeAmounts={out.feeAmounts} />
+          <Group title="Construction — direct costs" fields={CONSTRUCTION_DIRECT} inp={inp} set={set} setOverride={setOverride} feeAmounts={out.feeAmounts} note="Build rates multiply by developable area (m²). Contingency applies to build + landscaping + other." />
+          <Group title="Construction — professional fees" fields={CONSTRUCTION_FEES} inp={inp} set={set} setOverride={setOverride} feeAmounts={out.feeAmounts} note="Each % is of the construction base. Use the £ toggle on any fee to enter a fixed amount instead." />
+          <Group title="Finance — purchase" fields={PURCHASE_FINANCE} inp={inp} set={set} setOverride={setOverride} feeAmounts={out.feeAmounts} />
+          <Group title="Finance — development" fields={DEV_FINANCE} inp={inp} set={set} setOverride={setOverride} feeAmounts={out.feeAmounts} />
 
           <section className="card p-5">
             <h2 className="font-serif text-lg text-ink">Disposal</h2>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <NumField label="Agent selling fee (% of GDV)" kind="pct" value={inp.agentSellingPct} onChange={(v) => set("agentSellingPct", v)} />
+              <PctValueField
+                label="Agent selling fee (of GDV)"
+                pctValue={inp.agentSellingPct}
+                override={inp.overrides?.agentSellingPct}
+                computed={out.feeAmounts.agentSellingPct ?? 0}
+                onPct={(v) => set("agentSellingPct", v)}
+                onOverride={(v) => setOverride("agentSellingPct", v)}
+              />
             </div>
           </section>
         </div>
@@ -249,12 +266,16 @@ function Group({
   fields,
   inp,
   set,
+  setOverride,
+  feeAmounts,
   note,
 }: {
   title: string;
   fields: FieldDef[];
   inp: IpadInputs;
   set: <K extends keyof IpadInputs>(key: K, value: IpadInputs[K]) => void;
+  setOverride: (key: string, value: number | null) => void;
+  feeAmounts: Record<string, number>;
   note?: string;
 }) {
   return (
@@ -262,17 +283,82 @@ function Group({
       <h2 className="font-serif text-lg text-ink">{title}</h2>
       {note && <p className="mt-1 text-xs text-ink-muted">{note}</p>}
       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {fields.map((f) => (
-          <NumField
-            key={String(f.key)}
-            label={f.label}
-            kind={f.kind}
-            value={inp[f.key] as number}
-            onChange={(v) => set(f.key, v as IpadInputs[typeof f.key])}
-          />
-        ))}
+        {fields.map((f) =>
+          f.kind === "pct" ? (
+            <PctValueField
+              key={String(f.key)}
+              label={f.label}
+              pctValue={inp[f.key] as number}
+              override={inp.overrides?.[f.key as string]}
+              computed={feeAmounts[f.key as string] ?? 0}
+              onPct={(v) => set(f.key, v as IpadInputs[typeof f.key])}
+              onOverride={(v) => setOverride(f.key as string, v)}
+            />
+          ) : (
+            <NumField
+              key={String(f.key)}
+              label={f.label}
+              kind={f.kind}
+              value={inp[f.key] as number}
+              onChange={(v) => set(f.key, v as IpadInputs[typeof f.key])}
+            />
+          ),
+        )}
       </div>
     </section>
+  );
+}
+
+/** A percentage fee that can be toggled to a fixed £ value (stored as an override). */
+function PctValueField({
+  label,
+  pctValue,
+  override,
+  computed,
+  onPct,
+  onOverride,
+}: {
+  label: string;
+  pctValue: number;
+  override: number | undefined;
+  computed: number;
+  onPct: (v: number) => void;
+  onOverride: (v: number | null) => void;
+}) {
+  const isValue = typeof override === "number";
+  const toggle = (active: boolean) =>
+    `px-1.5 py-0.5 text-[11px] font-semibold transition ${active ? "bg-ink text-white" : "bg-white text-ink-muted hover:text-ink"}`;
+  return (
+    <label className="block">
+      <span className="mb-1 flex items-center justify-between gap-2 text-[11px] font-medium uppercase tracking-wide text-ink-muted">
+        <span className="truncate">{label}</span>
+        <span className="inline-flex shrink-0 overflow-hidden rounded border border-paper-line">
+          <button type="button" className={toggle(!isValue)} onClick={() => onOverride(null)} aria-label="Use percentage">
+            %
+          </button>
+          <button type="button" className={toggle(isValue)} onClick={() => onOverride(Math.round(computed))} aria-label="Use fixed amount">
+            £
+          </button>
+        </span>
+      </span>
+      {isValue ? (
+        <input
+          type="number"
+          step={1}
+          className="field-sm tabular-nums"
+          value={Number.isFinite(override) ? override : 0}
+          onChange={(e) => onOverride(Number(e.target.value) || 0)}
+        />
+      ) : (
+        <input
+          type="number"
+          step={0.1}
+          className="field-sm tabular-nums"
+          value={Number.isFinite(pctValue) ? round2(pctValue * 100) : 0}
+          onChange={(e) => onPct((Number(e.target.value) || 0) / 100)}
+        />
+      )}
+    </label>
   );
 }
 

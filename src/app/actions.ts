@@ -5,7 +5,10 @@ import type { Dcas, Ipad, Mac, Property, ProcedabilitySettings } from "@/lib/typ
 import {
   createProperty,
   deleteProperty,
+  deleteSnapshot,
   getProperty,
+  listSnapshots,
+  restoreSnapshot,
   saveDcas,
   saveIpad,
   saveMac,
@@ -51,6 +54,24 @@ export async function actionDeleteProperty(id: string) {
   await deleteProperty(id);
   revalidatePath(`/`);
   revalidatePath(`/property/${id}`);
+  revalidatePath(`/recover`);
+  return { ok: true };
+}
+
+export async function actionListSnapshots() {
+  return listSnapshots();
+}
+
+export async function actionRestoreSnapshot(snapshotId: string) {
+  const id = await restoreSnapshot(snapshotId);
+  revalidatePath(`/`);
+  revalidatePath(`/recover`);
+  return { ok: !!id, id };
+}
+
+export async function actionDeleteSnapshot(snapshotId: string) {
+  await deleteSnapshot(snapshotId);
+  revalidatePath(`/recover`);
   return { ok: true };
 }
 

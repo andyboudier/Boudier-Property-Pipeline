@@ -148,6 +148,10 @@ export interface IpadInputs {
   // Appraisal metadata
   description: string;
   appraisalDate: string; // ISO yyyy-mm-dd — defaults to today on a fresh IPAD
+
+  // Per-fee absolute (£) overrides keyed by the percentage field name. When a
+  // key is present, computeIpad uses the fixed £ amount instead of the % calc.
+  overrides?: Record<string, number>;
 }
 
 export interface Ipad {
@@ -204,6 +208,17 @@ export interface Property {
 
   createdAt?: string;
   updatedAt?: string;
+}
+
+// A point-in-time copy of a property, captured before deletion so it can be
+// restored from the recovery (recycle bin) view.
+export interface PropertySnapshot {
+  id: string;
+  propertyId: string;
+  name: string;
+  reason: string; // e.g. "delete"
+  takenAt: string; // ISO timestamp
+  data: Omit<Property, "id">;
 }
 
 export interface ProcedabilitySettings {

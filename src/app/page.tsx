@@ -51,7 +51,10 @@ export default async function HomePage() {
             <span className="font-medium text-ink"> DCAS → MAC → IPAD</span>; procedability updates from the criteria you record.
           </p>
         </div>
-        <Link href="/property/new" className="btn-bronze self-start">+ Add site</Link>
+        <div className="flex items-center gap-2 self-start">
+          <Link href="/recover" className="btn-ghost">Recently deleted</Link>
+          <Link href="/property/new" className="btn-bronze">+ Add site</Link>
+        </div>
       </section>
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">

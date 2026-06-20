@@ -1,10 +1,11 @@
 import "server-only";
-import type { Property, ProcedabilitySettings, Dcas, Mac, Ipad } from "./types";
+import type { Property, ProcedabilitySettings, Dcas, Mac, Ipad, PropertySnapshot } from "./types";
 import { getDb, isFirestoreConfigured } from "./firebaseAdmin";
 import { SEED_PROPERTIES } from "./seedData";
 import { DEFAULT_SETTINGS } from "./procedability";
 
 const COLLECTION = "properties";
+const SNAPSHOTS = "snapshots";
 const SETTINGS_DOC = ["settings", "procedability"] as const;
 
 // ── In-memory demo store (used when Firestore isn't configured) ──────────────
@@ -13,12 +14,17 @@ const SETTINGS_DOC = ["settings", "procedability"] as const;
 const g = globalThis as unknown as {
   __boudierStore?: Map<string, Property>;
   __boudierSettings?: ProcedabilitySettings;
+  __boudierSnapshots?: PropertySnapshot[];
 };
 function memStore(): Map<string, Property> {
   if (!g.__boudierStore) {
     g.__boudierStore = new Map(SEED_PROPERTIES.map((p) => [p.id, structuredClone(p)]));
   }
   return g.__boudierStore;
+}
+function memSnapshots(): PropertySnapshot[] {
+  if (!g.__boudierSnapshots) g.__boudierSnapshots = [];
+  return g.__boudierSnapshots;
 }
 
 const now = () => new Date().toISOString();
@@ -69,10 +75,58 @@ export async function updateProperty(id: string, patch: Partial<Property>): Prom
 export async function deleteProperty(id: string): Promise<void> {
   const db = getDb();
   if (!db) {
-    memStore().delete(id);
+    const cur = memStore().get(id);
+    if (cur) {
+      const { id: _omit, ...data } = cur;
+      memSnapshots().unshift({ id: `snap-${Date.now()}-${memSnapshots().length}`, propertyId: id, name: cur.name, reason: "delete", takenAt: now(), data });
+      memStore().delete(id);
+    }
     return;
   }
+  // Snapshot the document before deleting so it can be recovered.
+  const doc = await db.collection(COLLECTION).doc(id).get();
+  if (doc.exists) {
+    const data = doc.data() as Omit<Property, "id">;
+    await db.collection(SNAPSHOTS).add({ propertyId: id, name: data.name ?? id, reason: "delete", takenAt: now(), data });
+  }
   await db.collection(COLLECTION).doc(id).delete();
+}
+
+// ── Snapshots (recovery / recycle bin) ───────────────────────────────────────
+export async function listSnapshots(): Promise<PropertySnapshot[]> {
+  const db = getDb();
+  if (!db) return [...memSnapshots()];
+  const snap = await db.collection(SNAPSHOTS).orderBy("takenAt", "desc").limit(100).get();
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<PropertySnapshot, "id">) }));
+}
+
+/** Re-create the property from a snapshot, then remove the snapshot. */
+export async function restoreSnapshot(snapshotId: string): Promise<string | null> {
+  const db = getDb();
+  if (!db) {
+    const idx = memSnapshots().findIndex((s) => s.id === snapshotId);
+    if (idx === -1) return null;
+    const [s] = memSnapshots().splice(idx, 1);
+    memStore().set(s.propertyId, { id: s.propertyId, ...s.data } as Property);
+    return s.propertyId;
+  }
+  const ref = db.collection(SNAPSHOTS).doc(snapshotId);
+  const doc = await ref.get();
+  if (!doc.exists) return null;
+  const s = doc.data() as Omit<PropertySnapshot, "id">;
+  await db.collection(COLLECTION).doc(s.propertyId).set(stripUndefined(s.data));
+  await ref.delete();
+  return s.propertyId;
+}
+
+/** Permanently discard a snapshot (cannot be recovered afterwards). */
+export async function deleteSnapshot(snapshotId: string): Promise<void> {
+  const db = getDb();
+  if (!db) {
+    g.__boudierSnapshots = memSnapshots().filter((s) => s.id !== snapshotId);
+    return;
+  }
+  await db.collection(SNAPSHOTS).doc(snapshotId).delete();
 }
 
 export async function saveDcas(id: string, dcas: Dcas) {

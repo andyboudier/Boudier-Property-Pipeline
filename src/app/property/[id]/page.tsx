@@ -65,6 +65,7 @@ export default async function PropertyOverview({ params }: { params: { id: strin
           <div className="flex items-center gap-3">
             <StatusBadge status={result.status} />
             <span className="text-sm text-ink-muted">{result.headline}</span>
+            <Link href={`/property/${p.id}/edit`} className="btn-ghost text-sm">Edit</Link>
             <DeletePropertyButton id={p.id} name={p.name} />
           </div>
         </div>

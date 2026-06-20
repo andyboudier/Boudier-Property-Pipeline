@@ -63,12 +63,23 @@ function looksBlocked(html: string): boolean {
 function parseMoney(v: unknown): number | null {
   if (typeof v === "number") return Number.isFinite(v) ? Math.round(v) : null;
   if (typeof v !== "string") return null;
-  if (/poa|price on application|offers? in|guide/i.test(v) && !/\d/.test(v)) return null;
-  const digits = v.replace(/[^\d.]/g, "");
+  // Prefer an explicit £-prefixed amount so we don't glue unrelated numbers
+  // together (e.g. "52 bed for sale £7000000" must not become 527000000).
+  const pound = v.match(/£\s?([\d,]+(?:\.\d+)?)/);
+  let digits: string;
+  if (pound) {
+    digits = pound[1].replace(/,/g, "");
+  } else {
+    if (/poa|price on application|offers? in|guide/i.test(v) && !/\d/.test(v)) return null;
+    digits = v.replace(/[^\d.]/g, "");
+  }
   if (!digits) return null;
   const n = Math.round(parseFloat(digits));
   return Number.isFinite(n) && n > 0 ? n : null;
 }
+
+const POSTCODE_TOKEN = /^[A-Z]{1,2}\d[A-Z\d]?(\s*\d[A-Z]{2})?$/i;
+const TRAILING_OUTCODE = /\s+[A-Z]{1,2}\d[A-Z\d]?(\s+\d[A-Z]{2})?$/i;
 
 /** Best-effort town from a comma-separated UK address, dropping postcode tokens. */
 function deriveTown(displayAddress: string | undefined): string {
@@ -77,10 +88,18 @@ function deriveTown(displayAddress: string | undefined): string {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean)
-    // drop tokens that look like a postcode / outcode (e.g. "BS9", "BS9 1RD")
-    .filter((s) => !/^[A-Z]{1,2}\d[A-Z\d]?(\s*\d[A-Z]{2})?$/i.test(s));
+    .filter((s) => !POSTCODE_TOKEN.test(s)); // drop standalone "BS9" / "BS9 1RD"
   if (!parts.length) return "";
-  return parts[parts.length - 1];
+  // strip a trailing outcode glued onto the town, e.g. "Reading RG2" -> "Reading"
+  return parts[parts.length - 1].replace(TRAILING_OUTCODE, "").trim();
+}
+
+/** Strip a trailing " - Agent" / " | Site" suffix; reject ref-number-only titles. */
+function cleanListingTitle(s: string | undefined): string {
+  if (!s) return "";
+  const first = s.split(/\s+[|–-]\s+/)[0].trim();
+  if (!first || /^[\d\s]+$/.test(first)) return ""; // pure ref number / empty
+  return first;
 }
 
 // ── Rightmove: materialise the normalised PAGE_MODEL array ────────────────────
@@ -213,15 +232,15 @@ function parseJsonLd(html: string): ImportedDraft | null {
   const offers = Array.isArray(node.offers) ? node.offers[0] : node.offers;
   const guidePrice = parseMoney(offers?.price ?? offers?.priceSpecification?.price);
   const addr = node.address;
+  const street = typeof addr === "object" ? addr?.streetAddress : typeof addr === "string" ? addr : "";
   const town = typeof addr === "object" ? addr?.addressLocality || addr?.addressRegion || "" : "";
-  const name =
-    (typeof addr === "object" && addr?.streetAddress) ||
-    (typeof node.name === "string" ? node.name : "") ||
-    (typeof addr === "string" ? addr : "");
+  // node.name on many CMS-driven agent sites is the page title / listing ref —
+  // clean it and fall back to the street address.
+  const name = (typeof street === "string" && street) || cleanListingTitle(typeof node.name === "string" ? node.name : "");
 
   return {
-    name: typeof name === "string" ? name : "",
-    town: typeof town === "string" ? town : "",
+    name,
+    town: (typeof town === "string" && town) || deriveTown(name),
     guidePrice,
     notes: typeof node.description === "string" ? stripHtml(node.description).slice(0, 600) : "",
   };
@@ -240,8 +259,10 @@ function metaContent(html: string, key: string): string | null {
 function parseMeta(html: string): ImportedDraft {
   const title = metaContent(html, "og:title");
   const desc = metaContent(html, "og:description") || metaContent(html, "description");
+  const name = cleanListingTitle(title || "");
   return {
-    name: title || "",
+    name,
+    town: deriveTown(name),
     guidePrice: parseMoney(desc || ""),
     notes: desc ? stripHtml(desc).slice(0, 600) : "",
   };
