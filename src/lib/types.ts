@@ -144,6 +144,10 @@ export interface IpadInputs {
 
   units: IpadUnit[];
   valuationReport: string;
+
+  // Appraisal metadata
+  description: string;
+  appraisalDate: string; // ISO yyyy-mm-dd — defaults to today on a fresh IPAD
 }
 
 export interface Ipad {

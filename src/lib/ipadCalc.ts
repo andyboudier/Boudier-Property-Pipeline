@@ -4,6 +4,9 @@ const SQM_PER_SQFT = 0.092903;
 export const sqftToSqm = (sqft: number) => sqft * SQM_PER_SQFT;
 export const sqmToSqft = (sqm: number) => sqm / SQM_PER_SQFT;
 
+/** Today's date as an ISO yyyy-mm-dd string (server timezone). */
+export const todayISO = () => new Date().toISOString().slice(0, 10);
+
 // Default assumptions mirror the IPAD "Foundation" sheet (% of construction cost
 // or % of GDV as noted). All are editable inputs in the UI.
 export function defaultIpadInputs(partial?: Partial<IpadInputs>): IpadInputs {
@@ -64,6 +67,9 @@ export function defaultIpadInputs(partial?: Partial<IpadInputs>): IpadInputs {
 
     units: [],
     valuationReport: "",
+
+    description: "",
+    appraisalDate: todayISO(),
     ...partial,
   };
 }

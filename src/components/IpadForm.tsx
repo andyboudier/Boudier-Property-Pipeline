@@ -129,6 +129,32 @@ export function IpadForm({ propertyId, initial }: { propertyId: string; initial:
       <div className="grid gap-6 lg:grid-cols-[1fr,340px]">
         {/* INPUT COLUMN */}
         <div className="space-y-5">
+          {/* Appraisal metadata */}
+          <section className="card p-5">
+            <h2 className="font-serif text-lg text-ink">Appraisal</h2>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="block sm:col-span-2">
+                <span className="label">Description</span>
+                <textarea
+                  className="field-sm"
+                  rows={2}
+                  value={inp.description}
+                  onChange={(e) => set("description", e.target.value)}
+                  placeholder="Short summary of the scheme / appraisal"
+                />
+              </label>
+              <label className="block">
+                <span className="label">Appraisal date</span>
+                <input
+                  type="date"
+                  className="field-sm tabular-nums"
+                  value={inp.appraisalDate}
+                  onChange={(e) => set("appraisalDate", e.target.value)}
+                />
+              </label>
+            </div>
+          </section>
+
           {/* Scheme */}
           <section className="card p-5">
             <h2 className="font-serif text-lg text-ink">Scheme</h2>
