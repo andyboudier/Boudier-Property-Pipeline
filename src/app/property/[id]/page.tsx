@@ -139,7 +139,17 @@ export default async function PropertyOverview({ params }: { params: { id: strin
 
       {ipadOut && (
         <section className="card p-5">
-          <h2 className="font-serif text-lg text-ink">Appraisal headline (IPAD)</h2>
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="font-serif text-lg text-ink">Appraisal headline (IPAD)</h2>
+            {p.ipad?.inputs.appraisalDate && (
+              <span className="text-xs text-ink-muted">
+                Appraised {new Date(p.ipad.inputs.appraisalDate).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })}
+              </span>
+            )}
+          </div>
+          {p.ipad?.inputs.description && (
+            <p className="mt-1 text-sm text-ink-soft">{p.ipad.inputs.description}</p>
+          )}
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Fact label="GDV" value={gbp(ipadOut.gdv)} />
             <Fact label="Total cost" value={gbp(ipadOut.totalCostOfDevelopment)} />
