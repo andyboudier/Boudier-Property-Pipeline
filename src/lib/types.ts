@@ -196,6 +196,7 @@ export interface Property {
   priorityNextStep: string;
   listingSource?: string;
   listingUrl?: string;
+  notes?: string; // free-text — e.g. listing description/features captured on import
 
   dcas?: Dcas;
   mac?: Mac;

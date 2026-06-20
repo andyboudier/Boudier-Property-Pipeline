@@ -137,6 +137,13 @@ export default async function PropertyOverview({ params }: { params: { id: strin
         </div>
       </section>
 
+      {p.notes && (
+        <section className="card p-5">
+          <h2 className="font-serif text-lg text-ink">Notes</h2>
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-ink-soft">{p.notes}</p>
+        </section>
+      )}
+
       {ipadOut && (
         <section className="card p-5">
           <div className="flex flex-wrap items-baseline justify-between gap-2">

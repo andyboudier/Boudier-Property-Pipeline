@@ -56,3 +56,8 @@ export async function actionSaveSettings(s: ProcedabilitySettings) {
 export async function actionGetProperty(id: string) {
   return getProperty(id);
 }
+
+export async function actionImportListing(input: { url?: string; html?: string }) {
+  const { importListing } = await import("@/lib/importListing");
+  return importListing(input);
+}
