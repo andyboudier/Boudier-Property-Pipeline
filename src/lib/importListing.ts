@@ -465,14 +465,34 @@ function parsePdfText(text: string): ImportedDraft {
   };
 }
 
+// Limit concurrent scraper calls — Firecrawl plans cap simultaneous requests,
+// and firing one per watch at once makes most fail (returning nothing). A small
+// semaphore queues them so each succeeds.
+const FC_LIMIT = Number(process.env.FIRECRAWL_CONCURRENCY || 3);
+let fcActive = 0;
+const fcQueue: (() => void)[] = [];
+async function fcAcquire(): Promise<void> {
+  if (fcActive < FC_LIMIT) {
+    fcActive++;
+    return;
+  }
+  await new Promise<void>((res) => fcQueue.push(res));
+}
+function fcRelease(): void {
+  const next = fcQueue.shift();
+  if (next) next(); // hand the slot straight to the next waiter
+  else fcActive--;
+}
+
 // Paid render/proxy fallback for bot-protected sites (e.g. Zoopla). Inert
 // without FIRECRAWL_API_KEY. Returns clean markdown the parsers/AI can read.
 async function tryFirecrawl(url: string): Promise<string | null> {
   const key = process.env.FIRECRAWL_API_KEY;
   if (!key) return null;
+  await fcAcquire();
   try {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 30000);
+    const timer = setTimeout(() => ctrl.abort(), 22000);
     const res = await fetch("https://api.firecrawl.dev/v1/scrape", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "content-type": "application/json" },
@@ -490,6 +510,8 @@ async function tryFirecrawl(url: string): Promise<string | null> {
     return out || null;
   } catch {
     return null;
+  } finally {
+    fcRelease();
   }
 }
 
@@ -522,8 +544,24 @@ export async function fetchRawContent(url: string): Promise<string | null> {
 // Lightweight availability re-check — fetches the page (with scraper fallback)
 // and reads its market status WITHOUT an AI call, so it's cheap to run often.
 // Returns "" when the page can't be read, so we never raise a false alert.
-export async function checkMarketStatus(url: string): Promise<string> {
-  const content = await fetchRawContent(url).catch(() => null);
+export async function checkMarketStatus(url: string, useScraper = true): Promise<string> {
+  let content: string | null = null;
+  if (useScraper) {
+    content = await fetchRawContent(url).catch(() => null);
+  } else {
+    // Light plain fetch only — keeps the availability re-check off the scraper
+    // queue so it doesn't compete with discovery for slots.
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 12000);
+      const res = await fetch(url, { headers: BROWSER_HEADERS, signal: ctrl.signal, redirect: "follow" });
+      clearTimeout(timer);
+      const html = await res.text();
+      if (res.status >= 200 && res.status < 300 && !looksBlocked(html)) content = html;
+    } catch {
+      /* unreachable → unknown */
+    }
+  }
   if (!content) return "";
   const { htmlToText } = await import("./ai");
   return detectMarketStatus(htmlToText(content));

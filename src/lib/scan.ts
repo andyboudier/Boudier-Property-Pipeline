@@ -225,7 +225,7 @@ export async function runScan(): Promise<ScanSummary> {
     await Promise.all(
       batch.map(async (it) => {
         try {
-          const status = await checkMarketStatus(it.url);
+          const status = await checkMarketStatus(it.url, false);
           if (!status) return; // unreadable — leave as-is, no false alert
           const a = alertFor(it.prev, status);
           await it.save(status, a);
