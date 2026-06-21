@@ -222,6 +222,16 @@ export interface PropertySnapshot {
   data: Omit<Property, "id">;
 }
 
+// A registered WebAuthn passkey (e.g. Touch ID on a Mac) used to unlock the app.
+export interface PasskeyRecord {
+  id: string; // credential ID (base64url)
+  publicKey: string; // base64url-encoded public key
+  counter: number;
+  transports?: string[];
+  label: string; // friendly device name
+  createdAt: string;
+}
+
 export interface ProcedabilitySettings {
   minSqFt: number;
   maxSqFt: number;

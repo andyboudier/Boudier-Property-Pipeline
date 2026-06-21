@@ -1,11 +1,12 @@
 import "server-only";
-import type { Property, ProcedabilitySettings, Dcas, Mac, Ipad, PropertySnapshot } from "./types";
+import type { Property, ProcedabilitySettings, Dcas, Mac, Ipad, PropertySnapshot, PasskeyRecord } from "./types";
 import { getDb, isFirestoreConfigured } from "./firebaseAdmin";
 import { SEED_PROPERTIES } from "./seedData";
 import { DEFAULT_SETTINGS } from "./procedability";
 
 const COLLECTION = "properties";
 const SNAPSHOTS = "snapshots";
+const PASSKEYS = "passkeys";
 const SETTINGS_DOC = ["settings", "procedability"] as const;
 
 // ── In-memory demo store (used when Firestore isn't configured) ──────────────
@@ -15,6 +16,7 @@ const g = globalThis as unknown as {
   __boudierStore?: Map<string, Property>;
   __boudierSettings?: ProcedabilitySettings;
   __boudierSnapshots?: PropertySnapshot[];
+  __boudierPasskeys?: PasskeyRecord[];
 };
 function memStore(): Map<string, Property> {
   if (!g.__boudierStore) {
@@ -25,6 +27,10 @@ function memStore(): Map<string, Property> {
 function memSnapshots(): PropertySnapshot[] {
   if (!g.__boudierSnapshots) g.__boudierSnapshots = [];
   return g.__boudierSnapshots;
+}
+function memPasskeys(): PasskeyRecord[] {
+  if (!g.__boudierPasskeys) g.__boudierPasskeys = [];
+  return g.__boudierPasskeys;
 }
 
 const now = () => new Date().toISOString();
@@ -127,6 +133,50 @@ export async function deleteSnapshot(snapshotId: string): Promise<void> {
     return;
   }
   await db.collection(SNAPSHOTS).doc(snapshotId).delete();
+}
+
+// ── Passkeys (WebAuthn / Touch ID) ───────────────────────────────────────────
+export async function listPasskeys(): Promise<PasskeyRecord[]> {
+  const db = getDb();
+  if (!db) return [...memPasskeys()];
+  const snap = await db.collection(PASSKEYS).get();
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<PasskeyRecord, "id">) }));
+}
+
+export async function getPasskey(id: string): Promise<PasskeyRecord | null> {
+  const db = getDb();
+  if (!db) return memPasskeys().find((p) => p.id === id) ?? null;
+  const doc = await db.collection(PASSKEYS).doc(id).get();
+  return doc.exists ? ({ id: doc.id, ...(doc.data() as Omit<PasskeyRecord, "id">) }) : null;
+}
+
+export async function addPasskey(rec: PasskeyRecord): Promise<void> {
+  const db = getDb();
+  if (!db) {
+    memPasskeys().push(rec);
+    return;
+  }
+  const { id, ...data } = rec;
+  await db.collection(PASSKEYS).doc(id).set(stripUndefined(data));
+}
+
+export async function updatePasskeyCounter(id: string, counter: number): Promise<void> {
+  const db = getDb();
+  if (!db) {
+    const p = memPasskeys().find((x) => x.id === id);
+    if (p) p.counter = counter;
+    return;
+  }
+  await db.collection(PASSKEYS).doc(id).set({ counter }, { merge: true });
+}
+
+export async function deletePasskey(id: string): Promise<void> {
+  const db = getDb();
+  if (!db) {
+    g.__boudierPasskeys = memPasskeys().filter((p) => p.id !== id);
+    return;
+  }
+  await db.collection(PASSKEYS).doc(id).delete();
 }
 
 export async function saveDcas(id: string, dcas: Dcas) {

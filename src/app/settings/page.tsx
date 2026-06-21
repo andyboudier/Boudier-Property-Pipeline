@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getSettings } from "@/lib/db";
 import { SettingsForm } from "@/components/SettingsForm";
+import { PasskeyManager } from "@/components/PasskeyManager";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,7 @@ export default async function SettingsPage() {
         </p>
       </div>
       <SettingsForm initial={settings} />
+      <PasskeyManager />
     </div>
   );
 }

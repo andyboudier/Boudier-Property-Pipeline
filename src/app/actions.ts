@@ -95,6 +95,34 @@ export async function actionGetProperty(id: string) {
   return getProperty(id);
 }
 
+// ── Passkeys (Touch ID / WebAuthn) ───────────────────────────────────────────
+export async function actionPasskeyRegisterOptions() {
+  return (await import("@/lib/webauthn")).passkeyRegisterOptions();
+}
+export async function actionPasskeyRegisterVerify(
+  response: import("@simplewebauthn/browser").RegistrationResponseJSON,
+  label: string,
+) {
+  return (await import("@/lib/webauthn")).passkeyRegisterVerify(response, label);
+}
+export async function actionPasskeyAuthOptions() {
+  return (await import("@/lib/webauthn")).passkeyAuthOptions();
+}
+export async function actionPasskeyAuthVerify(
+  response: import("@simplewebauthn/browser").AuthenticationResponseJSON,
+) {
+  return (await import("@/lib/webauthn")).passkeyAuthVerify(response);
+}
+export async function actionListPasskeys() {
+  const { listPasskeys } = await import("@/lib/db");
+  return (await listPasskeys()).map((p) => ({ id: p.id, label: p.label, createdAt: p.createdAt }));
+}
+export async function actionDeletePasskey(id: string) {
+  const { deletePasskey } = await import("@/lib/db");
+  await deletePasskey(id);
+  return { ok: true };
+}
+
 export async function actionUnlock(pin: string): Promise<{ ok: boolean }> {
   const { gateCode, gateToken, GATE_COOKIE } = await import("@/lib/gate");
   const code = gateCode();
