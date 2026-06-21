@@ -83,7 +83,7 @@ export interface ScanSummary {
   skipped: number;
   rechecked: number;
   alerts: { name: string; kind: MarketAlert; status: string; where: "prospect" | "pipeline" }[];
-  watchStats: { watch: string; found: number; fresh: number; reachable: boolean }[];
+  watchStats: { watch: string; url: string; found: number; fresh: number; reachable: boolean }[];
   examined: { url: string; name: string; ok: boolean; reasons: string[] }[];
 }
 
@@ -128,7 +128,7 @@ export async function runScan(): Promise<ScanSummary> {
         }
       }
       perWatch.push({ label: w.label, links });
-      watchStats.push({ watch: w.label, found: total, fresh: links.length, reachable: !!content });
+      watchStats.push({ watch: w.label, url: w.url, found: total, fresh: links.length, reachable: !!content });
     }
 
     // Round-robin across watches so every source is sampled each run, not just
