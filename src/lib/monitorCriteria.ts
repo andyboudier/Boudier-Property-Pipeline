@@ -61,11 +61,17 @@ export function matchesCriteria(
   }
 
   if (c.propertyTypes.length) {
-    const ok = c.propertyTypes.some((t) => {
+    const matchesSelected = c.propertyTypes.some((t) => {
       const re = TYPE_KEYWORDS[t.toLowerCase()];
       return re ? re.test(text) : text.includes(t.toLowerCase());
     });
-    if (!ok) reasons.push("type");
+    // Only exclude on type when the listing clearly states a type we didn't pick.
+    // If no type can be read at all, let it through for manual review rather than
+    // silently dropping a possibly-good listing.
+    if (!matchesSelected) {
+      const anyTypeDetected = Object.values(TYPE_KEYWORDS).some((re) => re.test(text));
+      if (anyTypeDetected) reasons.push("type");
+    }
   }
 
   if (c.maxSqFt != null && f.sizeSqFt != null && f.sizeSqFt > c.maxSqFt) reasons.push("too large");

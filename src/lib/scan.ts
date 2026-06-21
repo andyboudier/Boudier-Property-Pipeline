@@ -15,7 +15,27 @@ import {
 import { importListing, fetchRawContent, checkMarketStatus } from "./importListing";
 import { matchesCriteria } from "./monitorCriteria";
 
-const LISTING_HINT = /\b(property|properties|details|for-sale|to-let|commercial|listing)\b/i;
+// A URL must look like an individual listing page to be a candidate.
+const LISTING_HINT = /(\/propert(y|ies)\/|\/details\/|\/listing\/|\/unit)/i;
+// …and must NOT be an asset, form, or index/category/search/pagination page.
+const NON_LISTING =
+  /\.(css|js|mjs|json|jpe?g|png|gif|svg|webp|ico|pdf|woff2?|ttf|eot|mp4|zip)(\?|$)|\/(property-enquiry|enquiry|property-search|search|find-agents?|register|sign-in|log-?in|account|saved|contact|about|news|blog|privacy|cookies?|terms|team|service|sectors?)(\/|$|\?)|\/page\/\d+|recently-(sold|let)|\/css\/|\/wp-(content|admin)\//i;
+
+// Portal listing-detail signatures (everything else from a portal host is a
+// category/search page we don't want).
+function portalDetail(u: string): boolean | null {
+  let h = "";
+  try {
+    h = new URL(u).hostname;
+  } catch {
+    return null;
+  }
+  if (/rightmove\./i.test(h)) return /\/properties\/\d{5,}/.test(u);
+  if (/zoopla\./i.test(h)) return /\/details\/\d{5,}/.test(u);
+  if (/onthemarket\./i.test(h)) return /\/details\/\d{5,}/.test(u);
+  return null; // not a known portal
+}
+
 const NEW_CAP = 8; // new prospects added per run (each costs an AI call)
 const EXAMINE_CAP = 40; // candidate links inspected per run before the NEW_CAP cut
 const RECHECK_CAP = 10; // tracked listings re-checked per run (cheap, no AI)
@@ -25,7 +45,14 @@ function extractListingLinks(content: string, baseUrl: string): string[] {
   const add = (href: string) => {
     try {
       const u = new URL(href, baseUrl).toString().split("#")[0];
-      if (LISTING_HINT.test(u)) out.add(u);
+      if (NON_LISTING.test(u)) return;
+      const portal = portalDetail(u);
+      if (portal === false) return; // a portal page that isn't a listing detail
+      if (portal === true) {
+        out.add(u);
+        return;
+      }
+      if (LISTING_HINT.test(u)) out.add(u); // non-portal agent listing
     } catch {
       /* ignore */
     }
