@@ -128,18 +128,6 @@ export async function actionGetProperty(id: string) {
   return getProperty(id);
 }
 
-// ── Passkeys (Touch ID / WebAuthn) — register/authenticate live in route
-// handlers (/api/passkey/*) so cookies are set reliably; list/delete are here.
-export async function actionListPasskeys() {
-  const { listPasskeys } = await import("@/lib/db");
-  return (await listPasskeys()).map((p) => ({ id: p.id, label: p.label, createdAt: p.createdAt }));
-}
-export async function actionDeletePasskey(id: string) {
-  const { deletePasskey } = await import("@/lib/db");
-  await deletePasskey(id);
-  return { ok: true };
-}
-
 export async function actionImportListing(input: { url?: string; html?: string }) {
   const { importListing } = await import("@/lib/importListing");
   return importListing(input);
