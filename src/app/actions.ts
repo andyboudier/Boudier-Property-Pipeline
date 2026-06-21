@@ -22,7 +22,9 @@ import {
   listWatch,
   addWatch,
   deleteWatch,
+  saveMonitorCriteria,
 } from "@/lib/db";
+import type { MonitorCriteria } from "@/lib/types";
 
 export async function actionSaveDcas(id: string, dcas: Dcas) {
   await saveDcas(id, dcas);
@@ -225,6 +227,11 @@ export async function actionAddWatch(label: string, url: string) {
 }
 export async function actionDeleteWatch(id: string) {
   await deleteWatch(id);
+  revalidatePath(`/prospects`);
+  return { ok: true };
+}
+export async function actionSaveCriteria(criteria: MonitorCriteria) {
+  await saveMonitorCriteria(criteria);
   revalidatePath(`/prospects`);
   return { ok: true };
 }

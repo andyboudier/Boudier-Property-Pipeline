@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { listLeads, listWatch } from "@/lib/db";
+import { listLeads, listWatch, getMonitorCriteria } from "@/lib/db";
 import { ProspectsBoard } from "@/components/ProspectsBoard";
+import { CriteriaEditor } from "@/components/CriteriaEditor";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProspectsPage() {
-  const [leads, watch] = await Promise.all([listLeads(), listWatch()]);
+  const [leads, watch, criteria] = await Promise.all([listLeads(), listWatch(), getMonitorCriteria()]);
   return (
     <div className="space-y-6">
       <div>
@@ -16,6 +17,7 @@ export default async function ProspectsPage() {
         </p>
       </div>
       <ProspectsBoard initialLeads={leads} initialWatch={watch} />
+      <CriteriaEditor initial={criteria} />
     </div>
   );
 }

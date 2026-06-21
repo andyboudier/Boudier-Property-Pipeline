@@ -29,15 +29,18 @@ export async function GET(req: NextRequest) {
   const authed = req.headers.get("authorization") === `Bearer ${secret}` || req.headers.get("x-vercel-cron") != null;
   if (!authed) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
 
-  const { listWatch, touchWatch, leadExistsForUrl, addLead, listProperties } = await import("@/lib/db");
+  const { listWatch, touchWatch, leadExistsForUrl, addLead, listProperties, getMonitorCriteria } = await import("@/lib/db");
   const { importListing, fetchRawContent } = await import("@/lib/importListing");
+  const { matchesCriteria } = await import("@/lib/monitorCriteria");
 
   const watches = await listWatch();
+  const criteria = await getMonitorCriteria();
   const knownUrls = new Set((await listProperties()).map((p) => p.listingUrl).filter(Boolean) as string[]);
 
   const CAP = 8; // bound AI/scraper cost per run
   let created = 0;
-  const results: { watch: string; links?: number; added?: number; error?: string }[] = [];
+  let skipped = 0;
+  const results: { watch: string; links?: number; added?: number; skipped?: number; error?: string }[] = [];
 
   for (const w of watches) {
     await touchWatch(w.id);
@@ -48,12 +51,21 @@ export async function GET(req: NextRequest) {
     }
     const links = extractListingLinks(content, w.url).filter((u) => u !== w.url);
     let added = 0;
+    let wSkipped = 0;
     for (const link of links) {
       if (created >= CAP) break;
       if (knownUrls.has(link) || (await leadExistsForUrl(link))) continue;
       try {
         const res = await importListing({ url: link });
         if (res.ok && res.fields.name) {
+          // Apply the user's monitor criteria before adding a prospect.
+          const verdict = matchesCriteria(res.fields, criteria);
+          if (!verdict.include) {
+            wSkipped++;
+            skipped++;
+            knownUrls.add(link);
+            continue;
+          }
           await addLead({
             status: "new",
             source: res.fields.listingSource || res.source || w.label,
@@ -76,8 +88,8 @@ export async function GET(req: NextRequest) {
         /* skip this link */
       }
     }
-    results.push({ watch: w.label, links: links.length, added });
+    results.push({ watch: w.label, links: links.length, added, skipped: wSkipped });
   }
 
-  return NextResponse.json({ ok: true, scanned: watches.length, created, results });
+  return NextResponse.json({ ok: true, scanned: watches.length, created, skipped, results });
 }

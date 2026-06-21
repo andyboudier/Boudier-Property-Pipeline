@@ -1,8 +1,9 @@
 import "server-only";
-import type { Property, ProcedabilitySettings, Dcas, Mac, Ipad, PropertySnapshot, Lead, WatchSource } from "./types";
+import type { Property, ProcedabilitySettings, Dcas, Mac, Ipad, PropertySnapshot, Lead, WatchSource, MonitorCriteria } from "./types";
 import { getDb, isFirestoreConfigured } from "./firebaseAdmin";
 import { SEED_PROPERTIES } from "./seedData";
 import { DEFAULT_SETTINGS } from "./procedability";
+import { DEFAULT_CRITERIA } from "./monitorCriteria";
 
 const COLLECTION = "properties";
 const SNAPSHOTS = "snapshots";
@@ -19,6 +20,7 @@ const g = globalThis as unknown as {
   __boudierSnapshots?: PropertySnapshot[];
   __boudierLeads?: Lead[];
   __boudierWatch?: WatchSource[];
+  __boudierCriteria?: MonitorCriteria;
 };
 function memStore(): Map<string, Property> {
   if (!g.__boudierStore) {
@@ -224,6 +226,22 @@ export async function touchWatch(id: string): Promise<void> {
     return;
   }
   await db.collection(WATCHLIST).doc(id).set({ lastScanAt: now() }, { merge: true });
+}
+
+// ── Monitor criteria (editable filter) ────────────────────────────────────────
+export async function getMonitorCriteria(): Promise<MonitorCriteria> {
+  const db = getDb();
+  if (!db) return g.__boudierCriteria ?? DEFAULT_CRITERIA;
+  const doc = await db.collection("config").doc("monitor").get();
+  return doc.exists ? { ...DEFAULT_CRITERIA, ...(doc.data() as Partial<MonitorCriteria>) } : DEFAULT_CRITERIA;
+}
+export async function saveMonitorCriteria(c: MonitorCriteria): Promise<void> {
+  const db = getDb();
+  if (!db) {
+    g.__boudierCriteria = c;
+    return;
+  }
+  await db.collection("config").doc("monitor").set(stripUndefined(c));
 }
 
 export async function saveDcas(id: string, dcas: Dcas) {

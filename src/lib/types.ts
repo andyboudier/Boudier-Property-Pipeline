@@ -260,6 +260,15 @@ export interface Lead {
   updatedAt?: string;
 }
 
+// Editable filter applied to auto-monitored listings before they become prospects.
+export interface MonitorCriteria {
+  propertyTypes: string[]; // e.g. Office, Retail, Mixed Use, Light Industrial
+  maxSqFt: number | null; // upper size limit in ft²
+  maxPrice: number | null; // upper guide price in £
+  includeIfNoPrice: boolean; // keep listings with no price quoted
+  areas: string[]; // counties / towns / postcode areas to include
+}
+
 // An agent search/results page to scan periodically for new listings.
 export interface WatchSource {
   id: string;
