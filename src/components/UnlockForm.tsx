@@ -1,27 +1,26 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { startAuthentication } from "@simplewebauthn/browser";
-import { actionUnlock, actionPasskeyAuthOptions, actionPasskeyAuthVerify } from "@/app/actions";
 
 export function UnlockForm({ from }: { from: string }) {
-  const router = useRouter();
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [bioBusy, setBioBusy] = useState(false);
 
-  function done() {
-    router.push(from || "/");
-    router.refresh();
-  }
+  const go = () => window.location.assign(from || "/");
 
   function submit() {
     setError(null);
     startTransition(async () => {
-      const res = await actionUnlock(pin);
-      if (res.ok) done();
+      const r = await fetch("/api/unlock", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ pin }),
+      });
+      const j = await r.json().catch(() => ({ ok: false }));
+      if (j.ok) go();
       else {
         setError("Incorrect code.");
         setPin("");
@@ -33,15 +32,21 @@ export function UnlockForm({ from }: { from: string }) {
     setError(null);
     setBioBusy(true);
     try {
-      const { options, hasCredentials } = await actionPasskeyAuthOptions();
+      const optRes = await fetch("/api/passkey/authenticate");
+      const { options, hasCredentials } = await optRes.json();
       if (!hasCredentials) {
         setError("No device set up yet. Enter the code, then enable Touch ID under Criteria.");
         return;
       }
       const resp = await startAuthentication({ optionsJSON: options });
-      const res = await actionPasskeyAuthVerify(resp);
-      if (res.ok) done();
-      else setError(res.error || "Touch ID failed.");
+      const vRes = await fetch("/api/passkey/authenticate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(resp),
+      });
+      const j = await vRes.json();
+      if (j.ok) go();
+      else setError(j.error || "Touch ID failed.");
     } catch (e) {
       if (!(e instanceof Error) || e.name !== "NotAllowedError") {
         setError(e instanceof Error ? e.message : "Touch ID failed.");

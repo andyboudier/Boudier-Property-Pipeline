@@ -1,5 +1,5 @@
 import "server-only";
-import { cookies, headers } from "next/headers";
+import { headers } from "next/headers";
 import {
   generateRegistrationOptions,
   verifyRegistrationResponse,
@@ -8,14 +8,14 @@ import {
 } from "@simplewebauthn/server";
 import { isoBase64URL } from "@simplewebauthn/server/helpers";
 import type { RegistrationResponseJSON, AuthenticationResponseJSON } from "@simplewebauthn/server";
-import { GATE_COOKIE, gateCode, gateToken } from "./gate";
 import { listPasskeys, getPasskey, addPasskey, updatePasskeyCounter } from "./db";
 
-const RP_NAME = "Boudier Property";
-const CHALLENGE_COOKIE = "boudier_wa_chal";
+// Pure WebAuthn helpers — cookie handling lives in the route handlers so the
+// challenge/gate cookies are set reliably on the response.
 
-// Derive the Relying Party ID + origin from the incoming request host so this
-// works on whatever domain the app is served from (no hardcoded domain).
+const RP_NAME = "Boudier Property";
+type Transport = "usb" | "ble" | "nfc" | "internal" | "hybrid";
+
 function rp() {
   const h = headers();
   const host = (h.get("x-forwarded-host") || h.get("host") || "localhost:3000").split(",")[0].trim();
@@ -24,22 +24,10 @@ function rp() {
   return { rpID, origin: `${proto}://${host}` };
 }
 
-function setChallenge(ch: string) {
-  cookies().set(CHALLENGE_COOKIE, ch, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 300 });
-}
-function readChallenge(): string | undefined {
-  return cookies().get(CHALLENGE_COOKIE)?.value;
-}
-function clearChallenge() {
-  cookies().delete(CHALLENGE_COOKIE);
-}
-
-type Transport = "usb" | "ble" | "nfc" | "internal" | "hybrid";
-
-export async function passkeyRegisterOptions() {
+export async function buildRegisterOptions() {
   const { rpID } = rp();
   const existing = await listPasskeys();
-  const options = await generateRegistrationOptions({
+  return generateRegistrationOptions({
     rpName: RP_NAME,
     rpID,
     userName: "Boudier Property",
@@ -48,17 +36,14 @@ export async function passkeyRegisterOptions() {
     authenticatorSelection: {
       residentKey: "preferred",
       userVerification: "preferred",
-      authenticatorAttachment: "platform", // Touch ID / Windows Hello, not roaming keys
+      authenticatorAttachment: "platform",
     },
   });
-  setChallenge(options.challenge);
-  return options;
 }
 
-export async function passkeyRegisterVerify(response: RegistrationResponseJSON, label: string) {
-  const { rpID, origin } = rp();
-  const expectedChallenge = readChallenge();
+export async function verifyRegister(response: RegistrationResponseJSON, label: string, expectedChallenge?: string) {
   if (!expectedChallenge) return { ok: false as const, error: "Challenge expired — try again." };
+  const { rpID, origin } = rp();
   let verification;
   try {
     verification = await verifyRegistrationResponse({
@@ -71,7 +56,6 @@ export async function passkeyRegisterVerify(response: RegistrationResponseJSON, 
   } catch (e) {
     return { ok: false as const, error: e instanceof Error ? e.message : "Verification failed" };
   }
-  clearChallenge();
   if (!verification.verified || !verification.registrationInfo) return { ok: false as const, error: "Not verified" };
   const c = verification.registrationInfo.credential;
   await addPasskey({
@@ -85,7 +69,7 @@ export async function passkeyRegisterVerify(response: RegistrationResponseJSON, 
   return { ok: true as const };
 }
 
-export async function passkeyAuthOptions() {
+export async function buildAuthOptions() {
   const { rpID } = rp();
   const creds = await listPasskeys();
   const options = await generateAuthenticationOptions({
@@ -93,14 +77,12 @@ export async function passkeyAuthOptions() {
     userVerification: "preferred",
     allowCredentials: creds.map((c) => ({ id: c.id, transports: c.transports as Transport[] | undefined })),
   });
-  setChallenge(options.challenge);
   return { options, hasCredentials: creds.length > 0 };
 }
 
-export async function passkeyAuthVerify(response: AuthenticationResponseJSON) {
-  const { rpID, origin } = rp();
-  const expectedChallenge = readChallenge();
+export async function verifyAuth(response: AuthenticationResponseJSON, expectedChallenge?: string) {
   if (!expectedChallenge) return { ok: false as const, error: "Challenge expired — try again." };
+  const { rpID, origin } = rp();
   const cred = await getPasskey(response.id);
   if (!cred) return { ok: false as const, error: "This device isn't registered." };
   let verification;
@@ -121,18 +103,7 @@ export async function passkeyAuthVerify(response: AuthenticationResponseJSON) {
   } catch (e) {
     return { ok: false as const, error: e instanceof Error ? e.message : "Verification failed" };
   }
-  clearChallenge();
   if (!verification.verified) return { ok: false as const, error: "Not verified" };
   await updatePasskeyCounter(cred.id, verification.authenticationInfo.newCounter);
-
-  const code = gateCode();
-  if (code) {
-    cookies().set(GATE_COOKIE, await gateToken(code), {
-      httpOnly: true,
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 30,
-    });
-  }
   return { ok: true as const };
 }

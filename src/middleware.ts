@@ -7,7 +7,15 @@ export async function middleware(req: NextRequest) {
   if (!code) return NextResponse.next(); // gate disabled when APP_ACCESS_CODE unset
 
   const { pathname } = req.nextUrl;
-  if (pathname.startsWith("/unlock")) return NextResponse.next();
+  // Reachable while locked: the unlock screen and the endpoints used to unlock.
+  // (Passkey *registration* stays gated, so a device can't be added without the code.)
+  if (
+    pathname.startsWith("/unlock") ||
+    pathname === "/api/unlock" ||
+    pathname === "/api/passkey/authenticate"
+  ) {
+    return NextResponse.next();
+  }
 
   const cookie = req.cookies.get(GATE_COOKIE)?.value;
   if (cookie && cookie === (await gateToken(code))) return NextResponse.next();

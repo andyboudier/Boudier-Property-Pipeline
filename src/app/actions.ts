@@ -95,24 +95,8 @@ export async function actionGetProperty(id: string) {
   return getProperty(id);
 }
 
-// ── Passkeys (Touch ID / WebAuthn) ───────────────────────────────────────────
-export async function actionPasskeyRegisterOptions() {
-  return (await import("@/lib/webauthn")).passkeyRegisterOptions();
-}
-export async function actionPasskeyRegisterVerify(
-  response: import("@simplewebauthn/browser").RegistrationResponseJSON,
-  label: string,
-) {
-  return (await import("@/lib/webauthn")).passkeyRegisterVerify(response, label);
-}
-export async function actionPasskeyAuthOptions() {
-  return (await import("@/lib/webauthn")).passkeyAuthOptions();
-}
-export async function actionPasskeyAuthVerify(
-  response: import("@simplewebauthn/browser").AuthenticationResponseJSON,
-) {
-  return (await import("@/lib/webauthn")).passkeyAuthVerify(response);
-}
+// ── Passkeys (Touch ID / WebAuthn) — register/authenticate live in route
+// handlers (/api/passkey/*) so cookies are set reliably; list/delete are here.
 export async function actionListPasskeys() {
   const { listPasskeys } = await import("@/lib/db");
   return (await listPasskeys()).map((p) => ({ id: p.id, label: p.label, createdAt: p.createdAt }));
@@ -120,21 +104,6 @@ export async function actionListPasskeys() {
 export async function actionDeletePasskey(id: string) {
   const { deletePasskey } = await import("@/lib/db");
   await deletePasskey(id);
-  return { ok: true };
-}
-
-export async function actionUnlock(pin: string): Promise<{ ok: boolean }> {
-  const { gateCode, gateToken, GATE_COOKIE } = await import("@/lib/gate");
-  const code = gateCode();
-  if (!code) return { ok: true }; // gate disabled
-  if ((pin ?? "").trim() !== code) return { ok: false };
-  const { cookies } = await import("next/headers");
-  cookies().set(GATE_COOKIE, await gateToken(code), {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 30, // 30 days
-  });
   return { ok: true };
 }
 

@@ -2,12 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { startRegistration } from "@simplewebauthn/browser";
-import {
-  actionPasskeyRegisterOptions,
-  actionPasskeyRegisterVerify,
-  actionListPasskeys,
-  actionDeletePasskey,
-} from "@/app/actions";
+import { actionListPasskeys, actionDeletePasskey } from "@/app/actions";
 
 type Item = { id: string; label: string; createdAt: string };
 
@@ -32,10 +27,15 @@ export function PasskeyManager() {
     setMsg(null);
     setAdding(true);
     try {
-      const options = await actionPasskeyRegisterOptions();
+      const optRes = await fetch("/api/passkey/register");
+      const options = await optRes.json();
       const resp = await startRegistration({ optionsJSON: options });
-      const label = deviceLabel();
-      const res = await actionPasskeyRegisterVerify(resp, label);
+      const vRes = await fetch("/api/passkey/register", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ response: resp, label: deviceLabel() }),
+      });
+      const res = await vRes.json();
       if (res.ok) {
         setMsg({ ok: true, text: "Touch ID enabled on this device." });
         refresh();

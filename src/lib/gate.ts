@@ -2,6 +2,7 @@
 // from middleware as well as server actions. The PIN itself lives in the
 // APP_ACCESS_CODE env var (never committed); the cookie stores a hash of it.
 export const GATE_COOKIE = "boudier_gate";
+export const WA_CHALLENGE_COOKIE = "boudier_wa_chal";
 
 export function gateCode(): string | undefined {
   const c = process.env.APP_ACCESS_CODE;
