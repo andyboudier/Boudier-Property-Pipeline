@@ -38,6 +38,7 @@ function portalDetail(u: string): boolean | null {
 
 const NEW_CAP = 6; // new prospects added per run (each costs an AI call)
 const EXAMINE_CAP = 40; // candidate links inspected per run before the NEW_CAP cut
+const PORTAL_PER_RUN = 3; // portal pages (slow stealth scrape) fetched per run, rotating
 const RECHECK_CAP = 10; // tracked listings re-checked per run (cheap, no AI)
 
 function extractListingLinks(content: string, baseUrl: string): string[] {
@@ -102,8 +103,13 @@ export async function runScan(): Promise<ScanSummary> {
     if (watches.length === 0) return { created: 0, skipped: 0, watchStats: [], examined: [] };
     const t0 = Date.now();
     const isPortal = (u: string) => /(rightmove|zoopla|onthemarket)\./i.test(u);
+    // Portal pages need the slow stealth scraper, so only do a few per run
+    // (oldest-scanned first) to stay inside the 60s budget; they rotate over runs.
+    const portalWatches = watches.filter((w) => isPortal(w.url)).sort((a, b) => (a.lastScanAt || "").localeCompare(b.lastScanAt || ""));
+    const otherWatches = watches.filter((w) => !isPortal(w.url));
+    const toFetch = [...otherWatches, ...portalWatches.slice(0, PORTAL_PER_RUN)];
     const pages = await Promise.all(
-      watches.map(async (w) => {
+      toFetch.map(async (w) => {
         await touchWatch(w.id);
         const content = await fetchRawContent(w.url).catch(() => null);
         return { w, content };
