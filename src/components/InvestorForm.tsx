@@ -22,6 +22,24 @@ export function InvestorForm({
   const [imageUrl, setImageUrl] = useState(initialImageUrl);
   const [pending, startTransition] = useTransition();
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [imgError, setImgError] = useState<string | null>(null);
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setImgError(null);
+    setUploading(true);
+    try {
+      setImageUrl(await compressImage(file));
+      setSavedAt(null);
+    } catch {
+      setImgError("Couldn't process that image — try a JPG or PNG.");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   function set<K extends keyof InvestorTerms>(key: K, value: InvestorTerms[K]) {
     setT((s) => ({ ...s, [key]: value }));
@@ -69,7 +87,40 @@ export function InvestorForm({
         <h2 className="font-serif text-lg text-ink">Pitch & contact</h2>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <Text label="Security" value={t.security} onChange={(v) => set("security", v)} placeholder="e.g. First legal charge over the asset" />
-          <Text label="Cover image URL" value={imageUrl} onChange={setImageUrl} placeholder="Image shown on the cover (auto-filled from Rightmove imports)" />
+          <div className="block sm:col-span-2">
+            <span className="label">Cover photo</span>
+            <div className="mt-1 flex flex-wrap items-start gap-3">
+              {imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={imageUrl} alt="Cover preview" className="h-20 w-28 shrink-0 rounded border border-paper-line object-cover" />
+              ) : (
+                <div className="grid h-20 w-28 shrink-0 place-items-center rounded border border-dashed border-paper-line text-[10px] text-ink-muted">
+                  No image
+                </div>
+              )}
+              <div className="flex min-w-[220px] flex-1 flex-col gap-2">
+                <div className="flex gap-2">
+                  <label className="btn-ghost cursor-pointer text-sm">
+                    {uploading ? "Processing…" : "Upload photo"}
+                    <input type="file" accept="image/*" className="hidden" onChange={handleFile} disabled={uploading} />
+                  </label>
+                  {imageUrl && (
+                    <button type="button" onClick={() => { setImageUrl(""); setSavedAt(null); }} className="btn-ghost text-sm">
+                      Remove
+                    </button>
+                  )}
+                </div>
+                <input
+                  className="field"
+                  value={imageUrl.startsWith("data:") ? "" : imageUrl}
+                  onChange={(e) => { setImageUrl(e.target.value); setSavedAt(null); }}
+                  placeholder="…or paste an image URL (auto-filled from listing imports)"
+                />
+                {imageUrl.startsWith("data:") && <span className="text-[11px] text-ink-muted">Using an uploaded photo.</span>}
+                {imgError && <span className="text-[11px] text-status-stop">{imgError}</span>}
+              </div>
+            </div>
+          </div>
           <label className="block sm:col-span-2">
             <span className="label">Highlights (one per line)</span>
             <textarea className="field min-h-[90px]" value={t.highlights} onChange={(e) => set("highlights", e.target.value)} placeholder={"Strong Bristol market\nPlanning principle established\n18-month exit"} />
@@ -148,4 +199,41 @@ function toNum(v: string): number | null {
   if (v.trim() === "") return null;
   const n = Number(v);
   return isNaN(n) ? null : n;
+}
+
+/** Resize + JPEG-compress an image file to a small data URL safe to store. */
+async function compressImage(file: File): Promise<string> {
+  const dataUrl = await new Promise<string>((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result as string);
+    r.onerror = () => rej(new Error("read failed"));
+    r.readAsDataURL(file);
+  });
+  const img = await new Promise<HTMLImageElement>((res, rej) => {
+    const i = new Image();
+    i.onload = () => res(i);
+    i.onerror = () => rej(new Error("decode failed"));
+    i.src = dataUrl;
+  });
+
+  const render = (maxDim: number, quality: number) => {
+    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("no canvas");
+    ctx.drawImage(img, 0, 0, w, h);
+    return canvas.toDataURL("image/jpeg", quality);
+  };
+
+  // Keep the stored string comfortably small (well under Firestore/action limits).
+  const LIMIT = 600 * 1024;
+  for (const [dim, q] of [[1600, 0.72], [1400, 0.68], [1100, 0.62], [900, 0.55]] as const) {
+    const out = render(dim, q);
+    if (out.length <= LIMIT) return out;
+  }
+  return render(800, 0.5);
 }
