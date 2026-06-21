@@ -362,6 +362,40 @@ function pdfSize(t: string): number | null {
   return first ? toInt(first[1]) : null;
 }
 
+// A rent UNIT immediately after an amount (per annum / psf / pcm …). Deliberately
+// excludes the bare word "rent" so a following figure's label isn't mistaken for
+// this amount's unit.
+const RENT_UNIT = /\b(per annum|p\.?\s?a\.?\b|pax|per sq\.?\s*ft|psf|per month|pcm|per sq\.?\s*m|per week|pw)\b/i;
+const PRICE_CTX = /\b(price|guide|asking|offers?|for sale|premium|freehold|leasehold for sale)\b/i;
+
+/** Pick the sale/guide price from particulars, never a rent or £/sq ft figure. */
+function pdfPrice(t: string): number | null {
+  const labelled: number[] = [];
+  const otherNonRent: number[] = [];
+  for (const m of t.matchAll(/£\s?[\d,]+(?:\.\d+)?/gi)) {
+    const idx = m.index ?? 0;
+    const before = t.slice(Math.max(0, idx - 32), idx); // wide: price context
+    const beforeNear = t.slice(Math.max(0, idx - 10), idx); // narrow: this amount's own label
+    const after = t.slice(idx + m[0].length, idx + m[0].length + 14);
+    const val = parseMoney(m[0]);
+    if (val == null) continue;
+    if (RENT_UNIT.test(after) || /\brent(al)?\b/i.test(beforeNear)) continue; // a rent / unit rate
+    if (PRICE_CTX.test(before)) labelled.push(val);
+    else otherNonRent.push(val);
+  }
+  if (labelled.length) return labelled[0];
+  // only fall back to an unlabelled amount if there's a single unambiguous,
+  // sale-sized figure — otherwise leave blank rather than guess wrong.
+  const big = otherNonRent.filter((n) => n >= 10000);
+  return big.length === 1 ? big[0] : null;
+}
+
+/** Capture a rent figure (with its unit) for the notes, so it isn't lost. */
+function pdfRent(t: string): string {
+  const m = t.match(/(?:rent[^£]{0,20})?£\s?[\d,]+(?:\.\d+)?\s*(?:per annum|p\.?\s?a\.?|pax|per sq\.?\s*ft|psf|per month|pcm|per week|pw)/i);
+  return m ? m[0].replace(/\s+/g, " ").trim() : "";
+}
+
 /** Heuristic extraction from agent particulars (commercial PDFs). */
 function parsePdfText(text: string): ImportedDraft {
   const t = text.replace(/\s+/g, " ").trim();
@@ -387,7 +421,8 @@ function parsePdfText(text: string): ImportedDraft {
   );
   const currentUse = useM ? `${titleWords(useM[1])} — ${titleWords(useM[2])}` : "";
 
-  const guidePrice = /on application|\bpoa\b/i.test(t) ? null : parseMoney(t.match(/£\s?[\d,]+(?:\.\d+)?/)?.[0] ?? "");
+  const guidePrice = pdfPrice(t);
+  const rent = pdfRent(t);
 
   let desc = "";
   const dm = t.match(
@@ -397,6 +432,8 @@ function parsePdfText(text: string): ImportedDraft {
 
   const source = /hicks\s*baker|hicksbaker/i.test(t) ? "Hicks Baker" : "PDF particulars";
 
+  const notes = [rent ? `Rent: ${rent}` : "", desc || t].filter(Boolean).join("\n").slice(0, 760);
+
   return {
     name,
     town: deriveTown(name) || town,
@@ -404,7 +441,7 @@ function parsePdfText(text: string): ImportedDraft {
     currentUse,
     guidePrice,
     listingSource: source,
-    notes: (desc || t).slice(0, 700),
+    notes,
   };
 }
 
