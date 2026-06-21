@@ -86,6 +86,21 @@ export async function actionGetProperty(id: string) {
   return getProperty(id);
 }
 
+export async function actionUnlock(pin: string): Promise<{ ok: boolean }> {
+  const { gateCode, gateToken, GATE_COOKIE } = await import("@/lib/gate");
+  const code = gateCode();
+  if (!code) return { ok: true }; // gate disabled
+  if ((pin ?? "").trim() !== code) return { ok: false };
+  const { cookies } = await import("next/headers");
+  cookies().set(GATE_COOKIE, await gateToken(code), {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 30, // 30 days
+  });
+  return { ok: true };
+}
+
 export async function actionImportListing(input: { url?: string; html?: string }) {
   const { importListing } = await import("@/lib/importListing");
   return importListing(input);

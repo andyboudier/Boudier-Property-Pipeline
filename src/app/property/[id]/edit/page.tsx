@@ -27,6 +27,7 @@ export default async function EditPropertyPage({ params }: { params: { id: strin
     listingSource: p.listingSource ?? "",
     listingUrl: p.listingUrl ?? "",
     notes: p.notes ?? "",
+    documentsUrl: p.documentsUrl ?? "",
   };
 
   return (

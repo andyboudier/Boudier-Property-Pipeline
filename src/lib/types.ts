@@ -201,6 +201,7 @@ export interface Property {
   listingSource?: string;
   listingUrl?: string;
   notes?: string; // free-text — e.g. listing description/features captured on import
+  documentsUrl?: string; // link to this site's OneDrive documents folder
 
   dcas?: Dcas;
   mac?: Mac;

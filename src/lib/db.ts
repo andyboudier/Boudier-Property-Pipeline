@@ -6,6 +6,11 @@ import { DEFAULT_SETTINGS } from "./procedability";
 
 const COLLECTION = "properties";
 const SNAPSHOTS = "snapshots";
+
+// Shared OneDrive root where per-site document folders live (fallback link for
+// the Documents button until a site has its own folder URL).
+export const ONEDRIVE_ROOT =
+  "https://actsyslimited-my.sharepoint.com/:f:/g/personal/vanessa_changes4life_co_uk/IgB7THi35r1OQ7RRxtYfbm2SAXjNtLJgfI2c070JLyroL_0?e=0CsNck";
 const SETTINGS_DOC = ["settings", "procedability"] as const;
 
 // ── In-memory demo store (used when Firestore isn't configured) ──────────────

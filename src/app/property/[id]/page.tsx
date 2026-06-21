@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getProperty, getSettings } from "@/lib/db";
+import { getProperty, getSettings, ONEDRIVE_ROOT } from "@/lib/db";
 import { evaluateProcedability } from "@/lib/procedability";
 import { dcasStats } from "@/lib/dcasSchema";
 import { computeIpad } from "@/lib/ipadCalc";
@@ -65,6 +65,15 @@ export default async function PropertyOverview({ params }: { params: { id: strin
           <div className="flex items-center gap-3">
             <StatusBadge status={result.status} />
             <span className="text-sm text-ink-muted">{result.headline}</span>
+            <a
+              href={p.documentsUrl || ONEDRIVE_ROOT}
+              target="_blank"
+              rel="noreferrer"
+              className="btn-ghost text-sm"
+              title={p.documentsUrl ? "Open this site's OneDrive folder" : "Open the shared OneDrive folder"}
+            >
+              Documents ↗
+            </a>
             <Link href={`/property/${p.id}/edit`} className="btn-ghost text-sm">Edit</Link>
             <DeletePropertyButton id={p.id} name={p.name} />
           </div>

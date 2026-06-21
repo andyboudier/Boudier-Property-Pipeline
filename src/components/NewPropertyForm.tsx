@@ -25,6 +25,7 @@ const EMPTY: Draft = {
   listingSource: "",
   listingUrl: "",
   notes: "",
+  documentsUrl: "",
 };
 
 type Msg = { kind: "ok" | "warn" | "err"; text: string };
@@ -202,6 +203,9 @@ export function NewPropertyForm({ propertyId, initial }: { propertyId?: string; 
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <Field label="Listing source"><input className="field" value={d.listingSource ?? ""} onChange={(e) => set("listingSource", e.target.value)} /></Field>
           <Field label="Listing URL"><input className="field" value={d.listingUrl ?? ""} onChange={(e) => set("listingUrl", e.target.value)} /></Field>
+          <Field label="Documents folder URL (OneDrive)" full>
+            <input className="field" value={d.documentsUrl ?? ""} onChange={(e) => set("documentsUrl", e.target.value)} placeholder="Paste this site's OneDrive folder link" />
+          </Field>
           <Field label="Notes" full>
             <textarea className="field min-h-[100px]" value={d.notes ?? ""} onChange={(e) => set("notes", e.target.value)} />
           </Field>
