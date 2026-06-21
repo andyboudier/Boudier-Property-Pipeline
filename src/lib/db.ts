@@ -1,11 +1,13 @@
 import "server-only";
-import type { Property, ProcedabilitySettings, Dcas, Mac, Ipad, PropertySnapshot } from "./types";
+import type { Property, ProcedabilitySettings, Dcas, Mac, Ipad, PropertySnapshot, Lead, WatchSource } from "./types";
 import { getDb, isFirestoreConfigured } from "./firebaseAdmin";
 import { SEED_PROPERTIES } from "./seedData";
 import { DEFAULT_SETTINGS } from "./procedability";
 
 const COLLECTION = "properties";
 const SNAPSHOTS = "snapshots";
+const LEADS = "leads";
+const WATCHLIST = "watchlist";
 const SETTINGS_DOC = ["settings", "procedability"] as const;
 
 // ── In-memory demo store (used when Firestore isn't configured) ──────────────
@@ -15,6 +17,8 @@ const g = globalThis as unknown as {
   __boudierStore?: Map<string, Property>;
   __boudierSettings?: ProcedabilitySettings;
   __boudierSnapshots?: PropertySnapshot[];
+  __boudierLeads?: Lead[];
+  __boudierWatch?: WatchSource[];
 };
 function memStore(): Map<string, Property> {
   if (!g.__boudierStore) {
@@ -127,6 +131,99 @@ export async function deleteSnapshot(snapshotId: string): Promise<void> {
     return;
   }
   await db.collection(SNAPSHOTS).doc(snapshotId).delete();
+}
+
+// ── Prospects (pre-pipeline leads) ────────────────────────────────────────────
+function memLeads(): Lead[] {
+  if (!g.__boudierLeads) g.__boudierLeads = [];
+  return g.__boudierLeads;
+}
+export async function listLeads(): Promise<Lead[]> {
+  const db = getDb();
+  if (!db) return [...memLeads()].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+  const snap = await db.collection(LEADS).orderBy("createdAt", "desc").limit(200).get();
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Lead, "id">) }));
+}
+export async function getLead(id: string): Promise<Lead | null> {
+  const db = getDb();
+  if (!db) return memLeads().find((l) => l.id === id) ?? null;
+  const doc = await db.collection(LEADS).doc(id).get();
+  return doc.exists ? ({ id: doc.id, ...(doc.data() as Omit<Lead, "id">) }) : null;
+}
+export async function leadExistsForUrl(url: string): Promise<boolean> {
+  if (!url) return false;
+  const db = getDb();
+  if (!db) return memLeads().some((l) => l.url === url);
+  const snap = await db.collection(LEADS).where("url", "==", url).limit(1).get();
+  return !snap.empty;
+}
+export async function addLead(lead: Omit<Lead, "id">): Promise<string> {
+  const db = getDb();
+  const clean = stripUndefined(lead);
+  if (!db) {
+    const id = `lead-${Date.now()}-${memLeads().length}`;
+    memLeads().unshift({ id, ...clean } as Lead);
+    return id;
+  }
+  const ref = await db.collection(LEADS).add(clean);
+  return ref.id;
+}
+export async function updateLead(id: string, patch: Partial<Lead>): Promise<void> {
+  const db = getDb();
+  const clean = stripUndefined({ ...patch, updatedAt: now() });
+  if (!db) {
+    const l = memLeads().find((x) => x.id === id);
+    if (l) Object.assign(l, clean);
+    return;
+  }
+  await db.collection(LEADS).doc(id).set(clean, { merge: true });
+}
+export async function deleteLead(id: string): Promise<void> {
+  const db = getDb();
+  if (!db) {
+    g.__boudierLeads = memLeads().filter((l) => l.id !== id);
+    return;
+  }
+  await db.collection(LEADS).doc(id).delete();
+}
+
+// ── Watchlist (agent pages to monitor) ────────────────────────────────────────
+function memWatch(): WatchSource[] {
+  if (!g.__boudierWatch) g.__boudierWatch = [];
+  return g.__boudierWatch;
+}
+export async function listWatch(): Promise<WatchSource[]> {
+  const db = getDb();
+  if (!db) return [...memWatch()];
+  const snap = await db.collection(WATCHLIST).get();
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<WatchSource, "id">) }));
+}
+export async function addWatch(w: Omit<WatchSource, "id">): Promise<string> {
+  const db = getDb();
+  if (!db) {
+    const id = `watch-${Date.now()}`;
+    memWatch().push({ id, ...w });
+    return id;
+  }
+  const ref = await db.collection(WATCHLIST).add(stripUndefined(w));
+  return ref.id;
+}
+export async function deleteWatch(id: string): Promise<void> {
+  const db = getDb();
+  if (!db) {
+    g.__boudierWatch = memWatch().filter((w) => w.id !== id);
+    return;
+  }
+  await db.collection(WATCHLIST).doc(id).delete();
+}
+export async function touchWatch(id: string): Promise<void> {
+  const db = getDb();
+  if (!db) {
+    const w = memWatch().find((x) => x.id === id);
+    if (w) w.lastScanAt = now();
+    return;
+  }
+  await db.collection(WATCHLIST).doc(id).set({ lastScanAt: now() }, { merge: true });
 }
 
 export async function saveDcas(id: string, dcas: Dcas) {

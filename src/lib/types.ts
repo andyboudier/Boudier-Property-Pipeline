@@ -240,6 +240,35 @@ export interface PropertySnapshot {
   data: Omit<Property, "id">;
 }
 
+// A potential property in the pre-pipeline ("prospects"), scraped/AI-extracted
+// from a listing before it's promoted to a full pipeline Property.
+export interface Lead {
+  id: string;
+  status: "new" | "reviewing" | "promoted" | "rejected";
+  source: string; // Rightmove / Zoopla / agent / Web
+  url: string;
+  name: string;
+  town: string;
+  guidePrice: number | null;
+  sizeSqFt: number | null;
+  pricePerSqFt: number | null;
+  currentUse: string;
+  notes: string;
+  imageUrl: string;
+  promotedPropertyId?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+// An agent search/results page to scan periodically for new listings.
+export interface WatchSource {
+  id: string;
+  label: string;
+  url: string;
+  createdAt: string;
+  lastScanAt?: string;
+}
+
 export interface ProcedabilitySettings {
   minSqFt: number;
   maxSqFt: number;

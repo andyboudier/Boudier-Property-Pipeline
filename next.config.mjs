@@ -3,6 +3,6 @@ const nextConfig = {
   reactStrictMode: true,
   images: { remotePatterns: [{ protocol: "https", hostname: "boudierproperty.co.uk" }] },
   // Keep the PDF parser (pdf.js) out of the bundle; load it at runtime.
-  experimental: { serverComponentsExternalPackages: ["unpdf"] },
+  experimental: { serverComponentsExternalPackages: ["unpdf", "@anthropic-ai/sdk"] },
 };
 export default nextConfig;

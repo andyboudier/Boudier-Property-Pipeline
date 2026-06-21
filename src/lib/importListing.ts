@@ -451,6 +451,45 @@ function parsePdfText(text: string): ImportedDraft {
   };
 }
 
+// Paid render/proxy fallback for bot-protected sites (e.g. Zoopla). Inert
+// without FIRECRAWL_API_KEY. Returns clean markdown the parsers/AI can read.
+async function tryFirecrawl(url: string): Promise<string | null> {
+  const key = process.env.FIRECRAWL_API_KEY;
+  if (!key) return null;
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 30000);
+    const res = await fetch("https://api.firecrawl.dev/v1/scrape", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "content-type": "application/json" },
+      body: JSON.stringify({ url, formats: ["markdown"], onlyMainContent: true }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const j = await res.json();
+    return j?.data?.markdown || j?.data?.html || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Fetch a page's raw HTML (or Firecrawl markdown) — used by the monitor to read
+ * an agent results page. Returns null if unreachable/blocked and no scraper. */
+export async function fetchRawContent(url: string): Promise<string | null> {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 20000);
+    const res = await fetch(url, { headers: BROWSER_HEADERS, signal: ctrl.signal, redirect: "follow" });
+    clearTimeout(timer);
+    const html = await res.text();
+    if (res.status >= 200 && res.status < 300 && !looksBlocked(html)) return html;
+  } catch {
+    /* fall through to scraper */
+  }
+  return tryFirecrawl(url);
+}
+
 // ── entry point ──────────────────────────────────────────────────────────────
 export async function importListing(input: { url?: string; html?: string }): Promise<ImportResult> {
   const url = input.url?.trim();
@@ -500,17 +539,21 @@ export async function importListing(input: { url?: string; html?: string }): Pro
       html = await res.text();
       if (res.status === 403 || res.status === 429 || looksBlocked(html)) blocked = true;
     } catch {
-      return {
-        ok: false,
-        source,
-        blocked: true,
-        warning: `Couldn't reach the page automatically. ${source} may block automated access — open the listing, view the page source, and paste it below.`,
-        fields: { listingSource: source, listingUrl: url },
-      };
+      blocked = true;
+      html = "";
+    }
+
+    // Blocked or empty → try the paid scraper (Firecrawl) if configured.
+    if (blocked || !html) {
+      const fc = await tryFirecrawl(url);
+      if (fc) {
+        html = fc;
+        blocked = false;
+      }
     }
   }
 
-  if (blocked) {
+  if (blocked || !html) {
     return {
       ok: false,
       source,
@@ -520,11 +563,23 @@ export async function importListing(input: { url?: string; html?: string }): Pro
     };
   }
 
-  const fields = mergeDrafts(
-    source === "Rightmove" ? parseRightmove(html) : null,
-    parseJsonLd(html),
-    parseMeta(html),
-  );
+  let fields = mergeDrafts(source === "Rightmove" ? parseRightmove(html) : null, parseJsonLd(html), parseMeta(html));
+
+  // AI extraction (Claude) — robust to any layout. Authoritative for non-Rightmove
+  // sites; fills gaps on Rightmove (where structured data is already accurate).
+  try {
+    const { extractWithAI, htmlToText, isAIConfigured } = await import("./ai");
+    if (isAIConfigured()) {
+      const ai = (await extractWithAI(htmlToText(html), source)) as ImportedDraft | null;
+      if (ai) fields = source === "Rightmove" ? mergeDrafts(fields, ai) : mergeDrafts(ai, fields);
+    }
+  } catch (e) {
+    console.error("AI extraction failed:", e);
+  }
+
+  if (fields.guidePrice && fields.sizeSqFt && !fields.pricePerSqFt) {
+    fields.pricePerSqFt = Math.round(fields.guidePrice / fields.sizeSqFt);
+  }
   fields.listingSource = source;
   if (url) fields.listingUrl = url;
 
@@ -533,7 +588,7 @@ export async function importListing(input: { url?: string; html?: string }): Pro
     ok: gotSomething,
     source,
     blocked: false,
-    warning: gotSomething ? undefined : "Couldn't find structured listing data on that page. Try pasting the page source instead.",
+    warning: gotSomething ? undefined : "Couldn't extract listing data. Try pasting the page source instead.",
     fields,
   };
 }
