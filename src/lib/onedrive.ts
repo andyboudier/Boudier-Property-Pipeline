@@ -71,23 +71,26 @@ function sanitizeName(name: string): string {
   return name.replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").replace(/[ .]+$/, "").trim().slice(0, 120) || "Untitled site";
 }
 
+type DriveChild = { id: string; name: string; webUrl: string };
+
+async function listChildren(token: string, driveId: string, parentId: string): Promise<DriveChild[]> {
+  const res = await fetch(`${GRAPH}/drives/${driveId}/items/${parentId}/children?$select=id,name,webUrl&$top=999`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return [];
+  return ((await res.json()).value ?? []) as DriveChild[];
+}
+
 async function createOrGetFolder(token: string, driveId: string, parentId: string, name: string) {
   const res = await fetch(`${GRAPH}/drives/${driveId}/items/${parentId}/children`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
     body: JSON.stringify({ name, folder: {}, "@microsoft.graph.conflictBehavior": "fail" }),
   });
-  if (res.ok) return (await res.json()) as { id: string; webUrl: string };
+  if (res.ok) return (await res.json()) as DriveChild;
   if (res.status === 409) {
-    // already exists — find it among the parent's children
-    const list = await fetch(
-      `${GRAPH}/drives/${driveId}/items/${parentId}/children?$select=id,name,webUrl&$top=999`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    );
-    if (list.ok) {
-      const found = (await list.json()).value?.find((c: { name?: string }) => c.name === name);
-      if (found) return found as { id: string; webUrl: string };
-    }
+    const found = (await listChildren(token, driveId, parentId)).find((c) => c.name === name);
+    if (found) return found;
   }
   throw new Error(`Graph create folder "${name}" failed: ${res.status} ${await res.text()}`);
 }
@@ -110,4 +113,37 @@ export async function createSiteFolders(siteName: string): Promise<string | null
     }
   }
   return siteFolder.webUrl;
+}
+
+/**
+ * Move a deleted site's folder into an "Archive" folder under the shared root.
+ * Returns true if a folder was archived, false if none was found / not configured.
+ */
+export async function archiveSiteFolder(siteName: string): Promise<boolean> {
+  if (!isOneDriveConfigured()) return false;
+  const token = await getToken();
+  const rootUrl = process.env.ONEDRIVE_ROOT_SHARE_URL || ONEDRIVE_ROOT;
+  const root = await resolveShare(token, rootUrl);
+  const safe = sanitizeName(siteName);
+
+  const site = (await listChildren(token, root.driveId, root.itemId)).find((c) => c.name === safe);
+  if (!site) return false; // nothing to archive
+
+  const archive = await createOrGetFolder(token, root.driveId, root.itemId, "Archive");
+
+  const move = (body: object) =>
+    fetch(`${GRAPH}/drives/${root.driveId}/items/${site.id}`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  let res = await move({ parentReference: { id: archive.id } });
+  if (res.status === 409) {
+    // a folder with that name already sits in Archive — disambiguate with a stamp
+    const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");
+    res = await move({ parentReference: { id: archive.id }, name: `${safe} (archived ${stamp})` });
+  }
+  if (!res.ok) throw new Error(`Graph archive move failed: ${res.status} ${await res.text()}`);
+  return true;
 }

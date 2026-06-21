@@ -60,7 +60,18 @@ export async function actionCreateProperty(p: Omit<Property, "id">) {
 }
 
 export async function actionDeleteProperty(id: string) {
+  const existing = await getProperty(id);
   await deleteProperty(id);
+  // Archive the site's OneDrive folder (move into "Archive"). Non-blocking and
+  // a no-op until Graph is configured.
+  if (existing?.name) {
+    try {
+      const { archiveSiteFolder } = await import("@/lib/onedrive");
+      await archiveSiteFolder(existing.name);
+    } catch (e) {
+      console.error("OneDrive archive failed:", e);
+    }
+  }
   revalidatePath(`/`);
   revalidatePath(`/property/${id}`);
   revalidatePath(`/recover`);
