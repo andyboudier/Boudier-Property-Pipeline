@@ -147,3 +147,36 @@ export async function archiveSiteFolder(siteName: string): Promise<boolean> {
   if (!res.ok) throw new Error(`Graph archive move failed: ${res.status} ${await res.text()}`);
   return true;
 }
+
+/**
+ * Move a restored site's folder back out of "Archive" to the shared root.
+ * Returns the folder's new webUrl, or null if not configured / not found.
+ */
+export async function unarchiveSiteFolder(siteName: string): Promise<string | null> {
+  if (!isOneDriveConfigured()) return null;
+  const token = await getToken();
+  const rootUrl = process.env.ONEDRIVE_ROOT_SHARE_URL || ONEDRIVE_ROOT;
+  const root = await resolveShare(token, rootUrl);
+  const safe = sanitizeName(siteName);
+
+  const archive = (await listChildren(token, root.driveId, root.itemId)).find((c) => c.name === "Archive");
+  if (!archive) return null;
+
+  const inArchive = await listChildren(token, root.driveId, archive.id);
+  // exact name, else the timestamped "<name> (archived …)" variant
+  const folder = inArchive.find((c) => c.name === safe) || inArchive.find((c) => c.name.startsWith(`${safe} (archived `));
+  if (!folder) return null;
+
+  const move = (body: object) =>
+    fetch(`${GRAPH}/drives/${root.driveId}/items/${folder.id}`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  // restore the clean name; if that conflicts at root, keep its current name
+  let res = await move({ parentReference: { id: root.itemId }, name: safe });
+  if (res.status === 409) res = await move({ parentReference: { id: root.itemId } });
+  if (!res.ok) throw new Error(`Graph un-archive move failed: ${res.status} ${await res.text()}`);
+  return ((await res.json()) as DriveChild).webUrl;
+}

@@ -84,6 +84,20 @@ export async function actionListSnapshots() {
 
 export async function actionRestoreSnapshot(snapshotId: string) {
   const id = await restoreSnapshot(snapshotId);
+  // Move the site's OneDrive folder back out of "Archive" and re-point its
+  // Documents link. Non-blocking; inert until Graph is configured.
+  if (id) {
+    try {
+      const p = await getProperty(id);
+      if (p?.name) {
+        const { unarchiveSiteFolder } = await import("@/lib/onedrive");
+        const url = await unarchiveSiteFolder(p.name);
+        if (url) await updateProperty(id, { documentsUrl: url });
+      }
+    } catch (e) {
+      console.error("OneDrive un-archive failed:", e);
+    }
+  }
   revalidatePath(`/`);
   revalidatePath(`/recover`);
   return { ok: !!id, id };
