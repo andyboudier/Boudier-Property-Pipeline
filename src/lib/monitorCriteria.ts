@@ -55,8 +55,14 @@ export function matchesCriteria(
   const reasons: string[] = [];
 
   // Hard exclusions — any matching keyword rejects the listing outright.
+  // Match on word boundaries so "mall" doesn't fire inside "small".
   if (c.excludeKeywords?.length) {
-    const hit = c.excludeKeywords.find((k) => k.trim() && text.includes(k.toLowerCase().trim()));
+    const hit = c.excludeKeywords.find((k) => {
+      const kk = k.trim().toLowerCase();
+      if (!kk) return false;
+      const esc = kk.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return new RegExp(`(^|\\W)${esc}(\\W|$)`, "i").test(text);
+    });
     if (hit) reasons.push(`excluded: "${hit}"`);
   }
 
@@ -85,14 +91,30 @@ export function matchesCriteria(
   }
 
   if (c.areas.length) {
-    const ok = c.areas.some((a) => {
+    // Build the set of target postcode-area letters and free-text names.
+    const targetOutcodes = new Set<string>();
+    const targetNames: string[] = [];
+    for (const a of c.areas) {
       const key = a.toLowerCase().trim();
-      if (!key) return false;
-      if (text.includes(key)) return true;
+      if (!key) continue;
+      targetNames.push(key); // county/town/postcode typed directly
       const outs = COUNTY_OUTCODES[key];
-      return outs ? outs.some((o) => new RegExp(`\\b${o}\\d`, "i").test(text)) : false;
-    });
-    if (!ok) reasons.push("area");
+      if (outs) outs.forEach((o) => targetOutcodes.add(o.replace(/\d+$/, "").toUpperCase()));
+      else if (/^[a-z]{1,2}$/.test(key)) targetOutcodes.add(key.toUpperCase());
+    }
+
+    const nameHit = targetNames.some((n) => n && text.includes(n));
+    const outcodeHit = targetOutcodes.size > 0 && new RegExp(`\\b(${[...targetOutcodes].join("|")})\\d`, "i").test(text);
+    // Full postcodes present anywhere in the text (road refs like "M4" won't match).
+    const fullPostcodeAreas = [...text.toUpperCase().matchAll(/\b([A-Z]{1,2})\d[A-Z\d]?\s*\d[A-Z]{2}\b/g)].map((m) => m[1]);
+    const hasOutOfAreaPostcode = fullPostcodeAreas.length > 0 && fullPostcodeAreas.every((o) => !targetOutcodes.has(o));
+
+    if (nameHit || outcodeHit) {
+      // clearly in a target area — keep
+    } else if (hasOutOfAreaPostcode) {
+      reasons.push("area"); // a real postcode, and it's outside the target counties
+    }
+    // otherwise: no location signal → let it through for manual review
   }
 
   return { include: reasons.length === 0, reasons };

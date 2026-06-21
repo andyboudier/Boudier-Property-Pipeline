@@ -496,6 +496,16 @@ async function tryFirecrawl(url: string): Promise<string | null> {
 /** Fetch a page's raw HTML (or Firecrawl markdown) — used by the monitor to read
  * an agent results page. Returns null if unreachable/blocked and no scraper. */
 export async function fetchRawContent(url: string): Promise<string | null> {
+  // The big portals block datacenter IPs (Vercel) on a plain fetch, so go via
+  // the render/proxy scraper first; only fall back to a direct fetch.
+  try {
+    if (/(rightmove|zoopla|onthemarket)\./i.test(new URL(url).hostname)) {
+      const fc = await tryFirecrawl(url);
+      if (fc) return fc;
+    }
+  } catch {
+    /* fall through */
+  }
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 20000);

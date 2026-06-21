@@ -19,7 +19,7 @@ import { matchesCriteria } from "./monitorCriteria";
 const LISTING_HINT = /(\/propert(y|ies)\/|\/details\/|\/listing\/|\/unit)/i;
 // …and must NOT be an asset, form, or index/category/search/pagination page.
 const NON_LISTING =
-  /\.(css|js|mjs|json|jpe?g|png|gif|svg|webp|ico|pdf|woff2?|ttf|eot|mp4|zip)(\?|$)|\/(property-enquiry|enquiry|property-search|search|find-agents?|register|sign-in|log-?in|account|saved|contact|about|news|blog|privacy|cookies?|terms|team|service|sectors?)(\/|$|\?)|\/page\/\d+|recently-(sold|let)|\/css\/|\/wp-(content|admin)\//i;
+  /\.(css|js|mjs|json|jpe?g|png|gif|svg|webp|ico|pdf|woff2?|ttf|eot|mp4|zip)(\?|$)|\/(property-enquiry|enquiry|property-search|search|find-agents?|register|sign-in|log-?in|account|saved|contact|about|news|blog|privacy|cookies?|terms|team|service|sectors?|cost-calculator|valuation)(\/|$|\?)|\/page\/\d+|recently-(sold|let)|\/feed\/|\/rss\b|\/css\/|\/wp-(content|admin)\/|\/propert(y|ies)\/?(\?|$)/i;
 
 // Portal listing-detail signatures (everything else from a portal host is a
 // category/search page we don't want).
