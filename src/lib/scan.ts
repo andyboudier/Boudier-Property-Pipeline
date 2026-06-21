@@ -29,9 +29,13 @@ function extractListingLinks(content: string, baseUrl: string): string[] {
       /* ignore */
     }
   };
-  for (const m of content.matchAll(/href=["']([^"']+)["']/gi)) add(m[1]);
-  for (const m of content.matchAll(/\]\((https?:\/\/[^)\s]+)\)/g)) add(m[1]);
-  return [...out].slice(0, 60);
+  for (const m of content.matchAll(/href=["']([^"']+)["']/gi)) add(m[1]); // HTML anchors
+  for (const m of content.matchAll(/\]\((https?:\/\/[^)\s]+)\)/g)) add(m[1]); // markdown links
+  // Portals (Rightmove/Zoopla/OnTheMarket) render listings via JSON/JS, so their
+  // links aren't in <a href>. Mine the listing-URL patterns straight from text:
+  for (const m of content.matchAll(/(?:https?:\/\/[^\s"'<>)\]]*)?\/properties\/\d{5,}/g)) add(m[0]); // Rightmove
+  for (const m of content.matchAll(/https?:\/\/[^\s"'<>)\]]*\/details\/\d{5,}\/?/g)) add(m[0]); // Zoopla / OnTheMarket
+  return [...out].slice(0, 80);
 }
 
 const GONE = (s?: string) => s === "Sold" || s === "Under Offer" || s === "Withdrawn";

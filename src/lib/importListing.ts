@@ -476,13 +476,18 @@ async function tryFirecrawl(url: string): Promise<string | null> {
     const res = await fetch("https://api.firecrawl.dev/v1/scrape", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "content-type": "application/json" },
-      body: JSON.stringify({ url, formats: ["markdown"], onlyMainContent: true }),
+      // Ask for rendered links too — portal search pages (Zoopla, JS agent
+      // sites) hold their listing links in script-rendered markup, not markdown.
+      body: JSON.stringify({ url, formats: ["markdown", "links"], onlyMainContent: true }),
       signal: ctrl.signal,
     });
     clearTimeout(timer);
     if (!res.ok) return null;
     const j = await res.json();
-    return j?.data?.markdown || j?.data?.html || null;
+    const md = j?.data?.markdown || j?.data?.html || "";
+    const links = Array.isArray(j?.data?.links) ? j.data.links.join("\n") : "";
+    const out = [md, links].filter(Boolean).join("\n");
+    return out || null;
   } catch {
     return null;
   }
