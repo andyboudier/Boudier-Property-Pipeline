@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getProperty, getSettings, ONEDRIVE_ROOT } from "@/lib/db";
+import { getProperty, getSettings } from "@/lib/db";
+import { ONEDRIVE_ROOT } from "@/lib/constants";
 import { evaluateProcedability } from "@/lib/procedability";
 import { dcasStats } from "@/lib/dcasSchema";
 import { computeIpad } from "@/lib/ipadCalc";

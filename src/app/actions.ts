@@ -46,6 +46,15 @@ export async function actionUpdateProperty(id: string, patch: Partial<Property>)
 
 export async function actionCreateProperty(p: Omit<Property, "id">) {
   const id = await createProperty(p);
+  // Create the site's OneDrive folder + subfolders (no-op until Graph is
+  // configured). Never let a folder failure break site creation.
+  try {
+    const { createSiteFolders } = await import("@/lib/onedrive");
+    const url = await createSiteFolders(p.name);
+    if (url) await updateProperty(id, { documentsUrl: url });
+  } catch (e) {
+    console.error("OneDrive folder creation failed:", e);
+  }
   revalidatePath(`/`);
   return { ok: true, id };
 }
