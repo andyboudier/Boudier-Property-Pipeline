@@ -276,6 +276,7 @@ export interface MonitorCriteria {
   maxPrice: number | null; // upper guide price in £
   includeIfNoPrice: boolean; // keep listings with no price quoted
   areas: string[]; // counties / towns / postcode areas to include
+  excludeKeywords: string[]; // reject if any of these appear in the listing text
 }
 
 // An agent search/results page to scan periodically for new listings.

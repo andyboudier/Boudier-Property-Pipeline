@@ -10,6 +10,7 @@ import {
   getMonitorCriteria,
   updateLead,
   updateProperty,
+  ignoredUrlSet,
 } from "./db";
 import { importListing, fetchRawContent, checkMarketStatus } from "./importListing";
 import { matchesCriteria } from "./monitorCriteria";
@@ -53,11 +54,12 @@ export interface ScanSummary {
 }
 
 export async function runScan(): Promise<ScanSummary> {
-  const [watches, criteria, properties, leads] = await Promise.all([
+  const [watches, criteria, properties, leads, ignored] = await Promise.all([
     listWatch(),
     getMonitorCriteria(),
     listProperties(),
     listLeads(),
+    ignoredUrlSet(),
   ]);
   const knownUrls = new Set(properties.map((p) => p.listingUrl).filter(Boolean) as string[]);
 
@@ -76,7 +78,7 @@ export async function runScan(): Promise<ScanSummary> {
     for (const { w, content } of pages) {
       if (!content) continue;
       for (const link of extractListingLinks(content, w.url)) {
-        if (link === w.url || seen.has(link) || knownUrls.has(link)) continue;
+        if (link === w.url || seen.has(link) || knownUrls.has(link) || ignored.has(link)) continue;
         seen.add(link);
         candidates.push(link);
       }

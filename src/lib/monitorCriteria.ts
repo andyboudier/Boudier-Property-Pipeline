@@ -6,6 +6,7 @@ export const DEFAULT_CRITERIA: MonitorCriteria = {
   maxPrice: 1500000,
   includeIfNoPrice: true,
   areas: ["Berkshire", "Hampshire", "Wiltshire", "Surrey", "Oxfordshire"],
+  excludeKeywords: ["industrial estate", "business park", "tenants", "fri basis"],
 };
 
 export const PROPERTY_TYPE_OPTIONS = [
@@ -52,6 +53,12 @@ export function matchesCriteria(
 ): CriteriaResult {
   const text = [f.name, f.town, f.currentUse, f.notes].filter(Boolean).join(" ").toLowerCase();
   const reasons: string[] = [];
+
+  // Hard exclusions — any matching keyword rejects the listing outright.
+  if (c.excludeKeywords?.length) {
+    const hit = c.excludeKeywords.find((k) => k.trim() && text.includes(k.toLowerCase().trim()));
+    if (hit) reasons.push(`excluded: "${hit}"`);
+  }
 
   if (c.propertyTypes.length) {
     const ok = c.propertyTypes.some((t) => {

@@ -8,6 +8,7 @@ import { actionSaveCriteria } from "@/app/actions";
 export function CriteriaEditor({ initial }: { initial: MonitorCriteria }) {
   const [c, setC] = useState<MonitorCriteria>(initial);
   const [areasText, setAreasText] = useState(initial.areas.join(", "));
+  const [excludeText, setExcludeText] = useState((initial.excludeKeywords ?? []).join(", "));
   const [pending, startTransition] = useTransition();
   const [savedAt, setSavedAt] = useState<string | null>(null);
 
@@ -21,7 +22,8 @@ export function CriteriaEditor({ initial }: { initial: MonitorCriteria }) {
 
   function save() {
     const areas = areasText.split(",").map((a) => a.trim()).filter(Boolean);
-    const next = { ...c, areas };
+    const excludeKeywords = excludeText.split(",").map((a) => a.trim()).filter(Boolean);
+    const next = { ...c, areas, excludeKeywords };
     startTransition(async () => {
       await actionSaveCriteria(next);
       setC(next);
@@ -77,6 +79,12 @@ export function CriteriaEditor({ initial }: { initial: MonitorCriteria }) {
       <div className="mt-4">
         <span className="label">Areas (comma-separated — counties, towns or postcode areas)</span>
         <input className="field" value={areasText} onChange={(e) => { setAreasText(e.target.value); setSavedAt(null); }} placeholder="Berkshire, Hampshire, Wiltshire, Surrey, Oxfordshire" />
+      </div>
+
+      <div className="mt-4">
+        <span className="label">Exclude keywords (comma-separated — reject if any appear in the listing)</span>
+        <input className="field" value={excludeText} onChange={(e) => { setExcludeText(e.target.value); setSavedAt(null); }} placeholder="industrial estate, business park, tenants, fri basis" />
+        <span className="mt-0.5 block text-[10px] text-ink-muted">Filters out tenanted investments and estate/park units. Manually added prospects are never filtered.</span>
       </div>
 
       <div className="mt-4 flex items-center justify-end gap-3">

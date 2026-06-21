@@ -23,6 +23,7 @@ import {
   addWatch,
   deleteWatch,
   saveMonitorCriteria,
+  addIgnoredUrl,
 } from "@/lib/db";
 import type { MonitorCriteria } from "@/lib/types";
 
@@ -175,7 +176,10 @@ export async function actionSetProspectStatus(id: string, status: "new" | "revie
 }
 
 export async function actionDeleteProspect(id: string) {
+  // Remember the listing URL so the auto-monitor never re-adds it.
+  const lead = await getLead(id);
   await deleteLead(id);
+  if (lead?.url) await addIgnoredUrl(lead.url, lead.name, "deleted prospect");
   revalidatePath(`/prospects`);
   return { ok: true };
 }

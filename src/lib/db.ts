@@ -21,6 +21,7 @@ const g = globalThis as unknown as {
   __boudierLeads?: Lead[];
   __boudierWatch?: WatchSource[];
   __boudierCriteria?: MonitorCriteria;
+  __boudierIgnored?: IgnoredUrl[];
 };
 function memStore(): Map<string, Property> {
   if (!g.__boudierStore) {
@@ -226,6 +227,36 @@ export async function touchWatch(id: string): Promise<void> {
     return;
   }
   await db.collection(WATCHLIST).doc(id).set({ lastScanAt: now() }, { merge: true });
+}
+
+// ── Ignored listings (deleted prospects — never auto-add again) ────────────────
+const IGNORED = "ignored";
+export interface IgnoredUrl {
+  url: string;
+  name?: string;
+  reason?: string;
+  at: string;
+}
+function memIgnored(): IgnoredUrl[] {
+  if (!g.__boudierIgnored) g.__boudierIgnored = [];
+  return g.__boudierIgnored;
+}
+export async function addIgnoredUrl(url: string, name?: string, reason?: string): Promise<void> {
+  if (!url) return;
+  const db = getDb();
+  const rec: IgnoredUrl = stripUndefined({ url, name: name || "", reason: reason || "deleted", at: now() });
+  if (!db) {
+    if (!memIgnored().some((i) => i.url === url)) memIgnored().unshift(rec);
+    return;
+  }
+  // Key the doc by the URL so re-deleting the same listing just overwrites.
+  await db.collection(IGNORED).doc(slugify(url) || `ign-${Date.now()}`).set(rec);
+}
+export async function ignoredUrlSet(): Promise<Set<string>> {
+  const db = getDb();
+  if (!db) return new Set(memIgnored().map((i) => i.url));
+  const snap = await db.collection(IGNORED).limit(2000).get();
+  return new Set(snap.docs.map((d) => (d.data() as IgnoredUrl).url).filter(Boolean));
 }
 
 // ── Monitor criteria (editable filter) ────────────────────────────────────────
