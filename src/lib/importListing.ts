@@ -333,6 +333,81 @@ function mergeDrafts(...drafts: (ImportedDraft | null)[]): ImportedDraft {
   return out;
 }
 
+// ── PDF particulars ──────────────────────────────────────────────────────────
+async function extractPdfText(buf: ArrayBuffer): Promise<string> {
+  try {
+    const { extractText, getDocumentProxy } = await import("unpdf");
+    const pdf = await getDocumentProxy(new Uint8Array(buf));
+    const { text } = await extractText(pdf, { mergePages: true });
+    return Array.isArray(text) ? text.join(" ") : text || "";
+  } catch {
+    return "";
+  }
+}
+
+function titleWords(s: string): string {
+  return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function pdfSize(t: string): number | null {
+  const toInt = (s: string) => parseInt(s.replace(/,/g, ""), 10);
+  // prefer an explicit "A – B sq ft" range (take the larger / total)
+  const range = t.match(/([\d,]+)\s*[–-]\s*([\d,]+)\s*sq\.?\s*ft/i);
+  if (range) return Math.max(toInt(range[1]), toInt(range[2]));
+  const total = t.match(/total\s+([\d,]+)/i);
+  if (total) return toInt(total[1]);
+  const size = t.match(/size:?\s*([\d,]+)\s*sq\.?\s*ft/i);
+  if (size) return toInt(size[1]);
+  const first = t.slice(0, 400).match(/([\d,]+)\s*sq\.?\s*ft/i);
+  return first ? toInt(first[1]) : null;
+}
+
+/** Heuristic extraction from agent particulars (commercial PDFs). */
+function parsePdfText(text: string): ImportedDraft {
+  const t = text.replace(/\s+/g, " ").trim();
+
+  // address + town from the first UK postcode in the document (top = subject)
+  let name = "";
+  let town = "";
+  const pc = t.match(/\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/);
+  if (pc) {
+    const postcode = `${pc[1]} ${pc[2]}`;
+    const words = t.slice(0, pc.index).replace(/[:|]/g, " ").trim().split(/\s+/).filter(Boolean).slice(-7);
+    town = words[words.length - 1] || "";
+    const street = words.slice(0, -1).join(" ").trim();
+    name = [street, `${town} ${postcode}`].filter(Boolean).join(", ");
+  } else {
+    name = cleanListingTitle(t.slice(0, 60));
+  }
+
+  const sizeSqFt = pdfSize(t);
+
+  const useM = t.match(
+    /\b(offices?|retail|industrial|warehouses?|shops?|restaurants?|leisure|showrooms?|units?|trade counter)\b[^.]{0,12}?\b(to let|for sale|to rent)\b/i,
+  );
+  const currentUse = useM ? `${titleWords(useM[1])} — ${titleWords(useM[2])}` : "";
+
+  const guidePrice = /on application|\bpoa\b/i.test(t) ? null : parseMoney(t.match(/£\s?[\d,]+(?:\.\d+)?/)?.[0] ?? "");
+
+  let desc = "";
+  const dm = t.match(
+    /description\s+(.*?)\s+(availability|location|terms|specification|viewings?|accommodation|epc\b)/i,
+  );
+  if (dm) desc = dm[1].trim();
+
+  const source = /hicks\s*baker|hicksbaker/i.test(t) ? "Hicks Baker" : "PDF particulars";
+
+  return {
+    name,
+    town: deriveTown(name) || town,
+    sizeSqFt,
+    currentUse,
+    guidePrice,
+    listingSource: source,
+    notes: (desc || t).slice(0, 700),
+  };
+}
+
 // ── entry point ──────────────────────────────────────────────────────────────
 export async function importListing(input: { url?: string; html?: string }): Promise<ImportResult> {
   const url = input.url?.trim();
@@ -350,9 +425,35 @@ export async function importListing(input: { url?: string; html?: string }): Pro
     }
     try {
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 15000);
+      const timer = setTimeout(() => ctrl.abort(), 20000);
       const res = await fetch(url, { headers: BROWSER_HEADERS, signal: ctrl.signal, redirect: "follow" });
       clearTimeout(timer);
+
+      // PDF particulars (e.g. agent brochures) — extract text and parse.
+      const ctype = res.headers.get("content-type") || "";
+      if (/\.pdf($|\?)/i.test(url) || ctype.includes("application/pdf")) {
+        const text = await extractPdfText(await res.arrayBuffer());
+        if (!text) {
+          return {
+            ok: false,
+            source: "PDF",
+            blocked: false,
+            warning: "Couldn't read text from that PDF — it may be a scanned image. Enter the details manually.",
+            fields: { listingSource: "PDF particulars", listingUrl: url },
+          };
+        }
+        const fields = parsePdfText(text);
+        fields.listingUrl = url;
+        const got = !!(fields.name || fields.sizeSqFt || fields.guidePrice || fields.notes);
+        return {
+          ok: got,
+          source: fields.listingSource || "PDF",
+          blocked: false,
+          warning: got ? undefined : "Couldn't find structured details in that PDF.",
+          fields,
+        };
+      }
+
       html = await res.text();
       if (res.status === 403 || res.status === 429 || looksBlocked(html)) blocked = true;
     } catch {

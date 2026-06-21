@@ -113,8 +113,9 @@ export function NewPropertyForm({ propertyId, initial }: { propertyId?: string; 
       <section className="card border-bronze/40 p-5">
         <h2 className="font-serif text-lg text-ink">Import from a listing</h2>
         <p className="mt-1 text-xs text-ink-muted">
-          Paste a property URL (Rightmove works best) to auto-fill the fields below. Some sites (e.g. Zoopla) block automated
-          fetching — if so, you&apos;ll be prompted to paste the page source instead.
+          Paste a property URL — a Rightmove listing or an agent&apos;s PDF particulars (e.g. Hicks Baker) — to auto-fill the
+          fields below. Some sites (e.g. Zoopla) block automated fetching; if so, you&apos;ll be prompted to paste the page
+          source instead.
         </p>
         <div className="mt-3 flex flex-col gap-2 sm:flex-row">
           <input
