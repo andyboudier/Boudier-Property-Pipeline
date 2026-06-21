@@ -137,12 +137,18 @@ export async function runScan(): Promise<ScanSummary> {
       watchStats.push({ watch: w.label, url: w.url, found: total, fresh: links.length, reachable: !!content });
     }
 
+    // Rotate which watch leads the round-robin each run (changes hourly) so the
+    // NEW_CAP cut doesn't always favour the same sources — everything gets a
+    // turn at the front over successive runs.
+    const offset = perWatch.length ? Math.floor(t0 / 3_600_000) % perWatch.length : 0;
+    const rotated = [...perWatch.slice(offset), ...perWatch.slice(0, offset)];
+
     // Round-robin across watches so every source is sampled each run, not just
     // whichever ones happen to come first.
     const ordered: string[] = [];
     for (let i = 0; ordered.length < EXAMINE_CAP; i++) {
       let any = false;
-      for (const pw of perWatch) {
+      for (const pw of rotated) {
         if (pw.links[i] != null) {
           ordered.push(pw.links[i]);
           any = true;
