@@ -160,6 +160,8 @@ export async function actionAddProspect(input: { url?: string; html?: string }) 
     currentUse: f.currentUse || "",
     notes: f.notes || "",
     imageUrl: f.imageUrl || "",
+    marketStatus: f.marketStatus || "",
+    statusCheckedAt: new Date().toISOString(),
     createdAt: new Date().toISOString(),
   });
   revalidatePath(`/prospects`);
@@ -200,6 +202,8 @@ export async function actionPromoteProspect(id: string) {
     listingUrl: lead.url || "",
     notes: lead.notes || "",
     imageUrl: lead.imageUrl || "",
+    marketStatus: lead.marketStatus || "",
+    statusCheckedAt: lead.statusCheckedAt || new Date().toISOString(),
   });
   // Create the site's OneDrive folder (no-op until Graph configured).
   try {
@@ -233,6 +237,28 @@ export async function actionDeleteWatch(id: string) {
 export async function actionSaveCriteria(criteria: MonitorCriteria) {
   await saveMonitorCriteria(criteria);
   revalidatePath(`/prospects`);
+  return { ok: true };
+}
+
+// ── Availability monitoring (sold / back-on-market) ───────────────────────────
+export async function actionScanNow() {
+  const { runScan } = await import("@/lib/scan");
+  const summary = await runScan();
+  revalidatePath(`/prospects`);
+  revalidatePath(`/`);
+  return summary;
+}
+
+export async function actionClearLeadAlert(id: string) {
+  await updateLead(id, { alert: null });
+  revalidatePath(`/prospects`);
+  return { ok: true };
+}
+
+export async function actionClearPropertyAlert(id: string) {
+  await updateProperty(id, { alert: null });
+  revalidatePath(`/`);
+  revalidatePath(`/property/${id}`);
   return { ok: true };
 }
 

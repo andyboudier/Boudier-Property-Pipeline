@@ -12,6 +12,8 @@ import {
   actionDeleteProspect,
   actionAddWatch,
   actionDeleteWatch,
+  actionScanNow,
+  actionClearLeadAlert,
 } from "@/app/actions";
 import { gbp, num } from "@/lib/format";
 
@@ -21,6 +23,22 @@ const STATUS_COLOR: Record<Lead["status"], string> = {
   promoted: "#2E7D5B",
   rejected: "#B23A48",
 };
+
+// Listing availability pill colours.
+function marketBadge(status?: string): { label: string; color: string } | null {
+  switch (status) {
+    case "Sold":
+      return { label: "Sold", color: "#B23A48" };
+    case "Under Offer":
+      return { label: "Under offer", color: "#C2872B" };
+    case "Withdrawn":
+      return { label: "Withdrawn", color: "#5B6976" };
+    case "For Sale":
+      return { label: "For sale", color: "#2E7D5B" };
+    default:
+      return null;
+  }
+}
 
 export function ProspectsBoard({ initialLeads, initialWatch }: { initialLeads: Lead[]; initialWatch: WatchSource[] }) {
   const router = useRouter();
@@ -75,12 +93,50 @@ export function ProspectsBoard({ initialLeads, initialWatch }: { initialLeads: L
       router.refresh();
     });
   }
+  function clearAlert(l: Lead) {
+    startTransition(async () => {
+      await actionClearLeadAlert(l.id);
+      router.refresh();
+    });
+  }
 
   const active = initialLeads.filter((l) => l.status !== "promoted");
   const promoted = initialLeads.filter((l) => l.status === "promoted");
+  const alerted = active.filter((l) => l.alert);
 
   return (
     <div className="space-y-6">
+      {/* Availability alerts */}
+      {alerted.length > 0 && (
+        <section className="rounded-lg border border-status-stop/40 bg-status-stop/5 p-4">
+          <h2 className="font-serif text-sm font-semibold uppercase tracking-wide text-status-stop">
+            Availability alerts ({alerted.length})
+          </h2>
+          <ul className="mt-2 space-y-1.5">
+            {alerted.map((l) => (
+              <li key={l.id} className="flex items-center justify-between gap-3 text-sm">
+                <span className="min-w-0 truncate text-ink">
+                  <span className="font-medium">{l.name}</span>
+                  <span className="ml-2 font-semibold" style={{ color: l.alert === "back-on-market" ? "#2E7D5B" : "#B23A48" }}>
+                    {l.alert === "back-on-market" ? "↩ Back on the market" : `● ${l.marketStatus || "Sold / Under offer"}`}
+                  </span>
+                </span>
+                <span className="flex shrink-0 items-center gap-2">
+                  {l.url && (
+                    <a href={l.url} target="_blank" rel="noreferrer" className="text-xs text-ink-muted hover:text-bronze-dark">
+                      Listing ↗
+                    </a>
+                  )}
+                  <button onClick={() => clearAlert(l)} disabled={pending} className="text-xs text-ink-muted hover:text-ink">
+                    Dismiss
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {/* Add prospect */}
       <section className="card border-bronze/40 p-5">
         <h2 className="font-serif text-lg text-ink">Add a prospect</h2>
@@ -125,8 +181,18 @@ export function ProspectsBoard({ initialLeads, initialWatch }: { initialLeads: L
                 <div className="min-w-0 flex-1 p-3">
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate font-medium text-ink">{l.name}</span>
-                    <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase" style={{ background: `${STATUS_COLOR[l.status]}1A`, color: STATUS_COLOR[l.status] }}>
-                      {l.status}
+                    <span className="flex shrink-0 items-center gap-1">
+                      {(() => {
+                        const mb = marketBadge(l.marketStatus);
+                        return mb ? (
+                          <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase" style={{ background: `${mb.color}1A`, color: mb.color }}>
+                            {mb.label}
+                          </span>
+                        ) : null;
+                      })()}
+                      <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase" style={{ background: `${STATUS_COLOR[l.status]}1A`, color: STATUS_COLOR[l.status] }}>
+                        {l.status}
+                      </span>
                     </span>
                   </div>
                   <div className="mt-0.5 truncate text-xs text-ink-muted">
@@ -185,6 +251,28 @@ function Watchlist({ initialWatch }: { initialWatch: WatchSource[] }) {
   const [label, setLabel] = useState("");
   const [url, setUrl] = useState("");
   const [pending, startTransition] = useTransition();
+  const [scanning, setScanning] = useState(false);
+  const [scanMsg, setScanMsg] = useState<string | null>(null);
+
+  async function scanNow() {
+    setScanning(true);
+    setScanMsg(null);
+    try {
+      const s = await actionScanNow();
+      const bits = [
+        `${s.created} new`,
+        s.skipped ? `${s.skipped} filtered out` : "",
+        `${s.rechecked} re-checked`,
+        s.alerts.length ? `${s.alerts.length} alert${s.alerts.length === 1 ? "" : "s"}` : "",
+      ].filter(Boolean);
+      setScanMsg(`Scan complete — ${bits.join(", ")}.`);
+      router.refresh();
+    } catch {
+      setScanMsg("Scan failed — check the keys are set, then try again.");
+    } finally {
+      setScanning(false);
+    }
+  }
 
   function addW() {
     if (!url.trim()) return;
@@ -204,11 +292,18 @@ function Watchlist({ initialWatch }: { initialWatch: WatchSource[] }) {
 
   return (
     <section className="card p-5">
-      <h2 className="font-serif text-lg text-ink">Auto-monitor</h2>
+      <div className="flex items-start justify-between gap-3">
+        <h2 className="font-serif text-lg text-ink">Auto-monitor</h2>
+        <button onClick={scanNow} disabled={scanning} className="btn-bronze shrink-0 px-3 py-1.5 text-xs disabled:opacity-60">
+          {scanning ? "Scanning…" : "Scan now"}
+        </button>
+      </div>
       <p className="mt-1 text-xs text-ink-muted">
-        Add an agent&apos;s search/results page. A scheduled scan reads each page and adds any new listings as prospects
-        automatically (requires the scraper + AI keys; runs daily once enabled).
+        Add an agent&apos;s search/results page. A scheduled scan reads each page and adds any new listings as prospects,
+        and re-checks listings you&apos;re tracking so you&apos;re told when one is sold or comes back on the market (runs
+        daily; use Scan now to run it immediately).
       </p>
+      {scanMsg && <p className="mt-2 text-sm text-status-go">{scanMsg}</p>}
       <div className="mt-3 flex flex-col gap-2 sm:flex-row">
         <input className="field sm:w-48" placeholder="Label (e.g. Hicks Baker)" value={label} onChange={(e) => setLabel(e.target.value)} />
         <input className="field flex-1" placeholder="https://…/commercial-property-for-sale" value={url} onChange={(e) => setUrl(e.target.value)} />

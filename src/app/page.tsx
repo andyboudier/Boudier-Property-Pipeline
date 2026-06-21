@@ -17,6 +17,8 @@ export default async function HomePage() {
     return {
       id: p.id,
       name: p.name,
+      marketStatus: p.marketStatus,
+      alert: p.alert,
       town: p.town,
       lpa: p.lpa,
       sizeSqFt: p.sizeSqFt,

@@ -5,13 +5,16 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { ProcedabilityStatus } from "@/lib/types";
 import { statusMeta } from "@/lib/procedability";
-import { actionDeleteProperty } from "@/app/actions";
+import { actionDeleteProperty, actionClearPropertyAlert } from "@/app/actions";
 import { StatusBadge } from "./Procedability";
 import { gbp, num, pct } from "@/lib/format";
+import type { MarketAlert } from "@/lib/types";
 
 export interface Row {
   id: string;
   name: string;
+  marketStatus?: string;
+  alert?: MarketAlert;
   town: string;
   lpa: string;
   sizeSqFt: number | null;
@@ -103,9 +106,12 @@ export function SearchTable({ rows }: { rows: Row[] }) {
             {filtered.map((r) => (
               <tr key={r.id} className="group border-b border-paper-line/70 last:border-0 hover:bg-paper-warm/60">
                 <td className="px-4 py-3">
-                  <Link href={`/property/${r.id}`} className="font-medium text-ink hover:text-bronze-dark">
-                    {r.name}
-                  </Link>
+                  <div className="flex items-center gap-2">
+                    <Link href={`/property/${r.id}`} className="font-medium text-ink hover:text-bronze-dark">
+                      {r.name}
+                    </Link>
+                    {r.alert && <AlertChip id={r.id} alert={r.alert} status={r.marketStatus} />}
+                  </div>
                   <div className="max-w-[260px] truncate text-xs text-ink-muted">{r.currentUse}</div>
                 </td>
                 <td className="px-4 py-3">
@@ -147,6 +153,25 @@ export function SearchTable({ rows }: { rows: Row[] }) {
         </table>
       </div>
     </section>
+  );
+}
+
+function AlertChip({ id, alert, status }: { id: string; alert: MarketAlert; status?: string }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const back = alert === "back-on-market";
+  const color = back ? "#2E7D5B" : "#B23A48";
+  const label = back ? "↩ Back on market" : `● ${status || "Sold / under offer"}`;
+  return (
+    <button
+      onClick={() => startTransition(async () => { await actionClearPropertyAlert(id); router.refresh(); })}
+      disabled={pending}
+      title="Click to dismiss this alert"
+      className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase"
+      style={{ background: `${color}1A`, color }}
+    >
+      {label}
+    </button>
   );
 }
 

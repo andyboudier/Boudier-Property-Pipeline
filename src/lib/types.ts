@@ -219,6 +219,9 @@ export interface Property {
   notes?: string; // free-text — e.g. listing description/features captured on import
   documentsUrl?: string; // link to this site's OneDrive documents folder
   imageUrl?: string; // hero image (e.g. from the listing) used on the investor cover
+  marketStatus?: string; // "For Sale" | "Under Offer" | "Sold" | "Withdrawn" | "" (from the listing)
+  alert?: MarketAlert; // raised when the listing's market status changes
+  statusCheckedAt?: string; // last time the listing was re-checked for availability
 
   dcas?: Dcas;
   mac?: Mac;
@@ -256,9 +259,15 @@ export interface Lead {
   notes: string;
   imageUrl: string;
   promotedPropertyId?: string;
+  marketStatus?: string; // "For Sale" | "Under Offer" | "Sold" | "Withdrawn" | "" (from the listing)
+  alert?: MarketAlert; // raised when the market status changes (sold / back on market)
+  statusCheckedAt?: string; // last time the listing's market status was re-checked
   createdAt: string;
   updatedAt?: string;
 }
+
+// A flag raised when a listing we're tracking changes availability.
+export type MarketAlert = "sold" | "back-on-market" | null;
 
 // Editable filter applied to auto-monitored listings before they become prospects.
 export interface MonitorCriteria {

@@ -19,6 +19,20 @@ export interface ImportedDraft {
   listingUrl?: string;
   notes?: string;
   imageUrl?: string;
+  marketStatus?: string; // For Sale | Under Offer | Sold | Withdrawn | ""
+}
+
+// Normalise listing availability from page text/HTML. Empty string = unknown
+// (treated as still available so we never miss a live listing).
+export function detectMarketStatus(content: string): string {
+  if (!content) return "";
+  const t = content.toLowerCase();
+  // Order matters: most-final state first.
+  if (/\bsold\s*(stc|subject to contract)?\b/.test(t) || /\bnow sold\b/.test(t) || /\bsale agreed\b/.test(t)) return "Sold";
+  if (/\b(under offer|let agreed)\b/.test(t)) return "Under Offer";
+  if (/\b(withdrawn|no longer available|listing (removed|expired)|property (removed|unavailable))\b/.test(t)) return "Withdrawn";
+  if (/\b(for sale|to let|available|guide price|asking price|offers (over|in excess|invited)|poa|on application)\b/.test(t)) return "For Sale";
+  return "";
 }
 
 export interface ImportResult {
@@ -490,6 +504,16 @@ export async function fetchRawContent(url: string): Promise<string | null> {
   return tryFirecrawl(url);
 }
 
+// Lightweight availability re-check — fetches the page (with scraper fallback)
+// and reads its market status WITHOUT an AI call, so it's cheap to run often.
+// Returns "" when the page can't be read, so we never raise a false alert.
+export async function checkMarketStatus(url: string): Promise<string> {
+  const content = await fetchRawContent(url).catch(() => null);
+  if (!content) return "";
+  const { htmlToText } = await import("./ai");
+  return detectMarketStatus(htmlToText(content));
+}
+
 // ── entry point ──────────────────────────────────────────────────────────────
 export async function importListing(input: { url?: string; html?: string }): Promise<ImportResult> {
   const url = input.url?.trim();
@@ -579,6 +603,11 @@ export async function importListing(input: { url?: string; html?: string }): Pro
 
   if (fields.guidePrice && fields.sizeSqFt && !fields.pricePerSqFt) {
     fields.pricePerSqFt = Math.round(fields.guidePrice / fields.sizeSqFt);
+  }
+  // Availability — keep what AI/structured data found, else sniff the page text.
+  if (!fields.marketStatus) {
+    const { htmlToText } = await import("./ai");
+    fields.marketStatus = detectMarketStatus(htmlToText(html));
   }
   fields.listingSource = source;
   if (url) fields.listingUrl = url;

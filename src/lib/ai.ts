@@ -39,6 +39,11 @@ const EXTRACT_TOOL = {
       currentUse: { type: "string", description: "Property type / planning use class / tenure, e.g. 'Offices (Class E), leasehold'." },
       description: { type: "string", description: "A 1-3 sentence summary of the property." },
       imageUrl: { type: ["string", "null"], description: "URL of the main photo if present in the content." },
+      marketStatus: {
+        type: ["string", "null"],
+        enum: ["For Sale", "Under Offer", "Sold", "Withdrawn", null],
+        description: "Current availability shown on the page. 'Sold' covers Sold STC / Sale Agreed; 'Under Offer' covers Let Agreed. Use 'For Sale' if actively available. Null if not stated.",
+      },
     },
     required: ["name"],
   },
@@ -82,5 +87,6 @@ export async function extractWithAI(content: string, sourceHint?: string): Promi
     currentUse: str(d.currentUse),
     notes: [rent ? `Rent: ${rent}` : "", desc].filter(Boolean).join("\n").slice(0, 800),
     imageUrl: str(d.imageUrl),
+    marketStatus: str(d.marketStatus),
   };
 }
