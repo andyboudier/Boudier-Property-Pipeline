@@ -159,6 +159,22 @@ export interface Ipad {
   updatedAt?: string;
 }
 
+// ── Investor terms (drives the investor presentation) ────────────────────────
+export interface InvestorTerms {
+  investmentSought: number | null; // total raise (£)
+  minInvestment: number | null; // minimum ticket (£)
+  termMonths: number | null; // investment term
+  interestRatePct: number | null; // fixed rate p.a. (decimal, e.g. 0.10)
+  profitSharePct: number | null; // share of net profit (decimal)
+  targetRoiPct: number | null; // total ROI over term (decimal)
+  security: string; // e.g. "First legal charge"
+  highlights: string; // free-text selling points (one per line)
+  contactName: string;
+  contactEmail: string;
+  contactPhone: string;
+  updatedAt?: string;
+}
+
 // ── Procedability ──────────────────────────────────────────────────────────
 export type ProcedabilityStatus =
   | "proceedable"
@@ -202,10 +218,12 @@ export interface Property {
   listingUrl?: string;
   notes?: string; // free-text — e.g. listing description/features captured on import
   documentsUrl?: string; // link to this site's OneDrive documents folder
+  imageUrl?: string; // hero image (e.g. from the listing) used on the investor cover
 
   dcas?: Dcas;
   mac?: Mac;
   ipad?: Ipad;
+  investor?: InvestorTerms;
 
   createdAt?: string;
   updatedAt?: string;

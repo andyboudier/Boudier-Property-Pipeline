@@ -18,6 +18,7 @@ export interface ImportedDraft {
   listingSource?: string;
   listingUrl?: string;
   notes?: string;
+  imageUrl?: string;
 }
 
 export interface ImportResult {
@@ -198,6 +199,9 @@ function parseRightmove(html: string): ImportedDraft | null {
     description: desc,
   });
 
+  const firstImage = Array.isArray(pd.images) ? pd.images[0] : undefined;
+  const imageUrl = typeof firstImage === "string" ? firstImage : firstImage?.url || firstImage?.srcUrl || "";
+
   return {
     name: pd.address?.displayAddress || "",
     town: deriveTown(pd.address?.displayAddress),
@@ -206,6 +210,7 @@ function parseRightmove(html: string): ImportedDraft | null {
     pricePerSqFt,
     currentUse,
     notes,
+    imageUrl,
   };
 }
 
@@ -265,6 +270,7 @@ function parseMeta(html: string): ImportedDraft {
     town: deriveTown(name),
     guidePrice: parseMoney(desc || ""),
     notes: desc ? stripHtml(desc).slice(0, 600) : "",
+    imageUrl: metaContent(html, "og:image") || "",
   };
 }
 

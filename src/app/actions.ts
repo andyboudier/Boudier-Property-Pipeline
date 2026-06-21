@@ -37,6 +37,14 @@ export async function actionSaveIpad(id: string, ipad: Ipad) {
   return { ok: true };
 }
 
+export async function actionSaveInvestor(id: string, investor: import("@/lib/types").InvestorTerms) {
+  await updateProperty(id, { investor: { ...investor, updatedAt: new Date().toISOString() } });
+  revalidatePath(`/property/${id}`);
+  revalidatePath(`/property/${id}/investor`);
+  revalidatePath(`/property/${id}/presentation`);
+  return { ok: true };
+}
+
 export async function actionUpdateProperty(id: string, patch: Partial<Property>) {
   await updateProperty(id, patch);
   revalidatePath(`/property/${id}`);

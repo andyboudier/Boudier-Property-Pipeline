@@ -75,6 +75,7 @@ export default async function PropertyOverview({ params }: { params: { id: strin
             >
               Documents ↗
             </a>
+            <Link href={`/property/${p.id}/investor`} className="btn-bronze text-sm">Investor pack</Link>
             <Link href={`/property/${p.id}/edit`} className="btn-ghost text-sm">Edit</Link>
             <DeletePropertyButton id={p.id} name={p.name} />
           </div>
