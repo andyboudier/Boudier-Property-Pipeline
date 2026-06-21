@@ -16,7 +16,8 @@ import { importListing, fetchRawContent, checkMarketStatus } from "./importListi
 import { matchesCriteria } from "./monitorCriteria";
 
 const LISTING_HINT = /\b(property|properties|details|for-sale|to-let|commercial|listing)\b/i;
-const NEW_CAP = 6; // new prospects discovered per run (each costs an AI call)
+const NEW_CAP = 8; // new prospects added per run (each costs an AI call)
+const EXAMINE_CAP = 40; // candidate links inspected per run before the NEW_CAP cut
 const RECHECK_CAP = 10; // tracked listings re-checked per run (cheap, no AI)
 
 function extractListingLinks(content: string, baseUrl: string): string[] {
@@ -55,6 +56,8 @@ export interface ScanSummary {
   skipped: number;
   rechecked: number;
   alerts: { name: string; kind: MarketAlert; status: string; where: "prospect" | "pipeline" }[];
+  watchStats: { watch: string; found: number; fresh: number; reachable: boolean }[];
+  examined: { url: string; name: string; ok: boolean; reasons: string[] }[];
 }
 
 export async function runScan(): Promise<ScanSummary> {
@@ -68,8 +71,8 @@ export async function runScan(): Promise<ScanSummary> {
   const knownUrls = new Set(properties.map((p) => p.listingUrl).filter(Boolean) as string[]);
 
   // ── A. Discover new prospects from watched agent pages ─────────────────────
-  async function discover(): Promise<{ created: number; skipped: number }> {
-    if (watches.length === 0) return { created: 0, skipped: 0 };
+  async function discover(): Promise<{ created: number; skipped: number; watchStats: ScanSummary["watchStats"]; examined: ScanSummary["examined"] }> {
+    if (watches.length === 0) return { created: 0, skipped: 0, watchStats: [], examined: [] };
     const pages = await Promise.all(
       watches.map(async (w) => {
         await touchWatch(w.id);
@@ -77,28 +80,60 @@ export async function runScan(): Promise<ScanSummary> {
         return { w, content };
       }),
     );
+
+    // Collect fresh candidates per watch (deduped against each other + what we
+    // already hold or have ignored).
     const seen = new Set<string>();
-    const candidates: string[] = [];
+    const perWatch: { label: string; links: string[] }[] = [];
+    const watchStats: ScanSummary["watchStats"] = [];
     for (const { w, content } of pages) {
-      if (!content) continue;
-      for (const link of extractListingLinks(content, w.url)) {
-        if (link === w.url || seen.has(link) || knownUrls.has(link) || ignored.has(link)) continue;
-        seen.add(link);
-        candidates.push(link);
+      const links: string[] = [];
+      let total = 0;
+      if (content) {
+        for (const link of extractListingLinks(content, w.url)) {
+          if (link === w.url) continue;
+          total++;
+          if (seen.has(link) || knownUrls.has(link) || ignored.has(link)) continue;
+          seen.add(link);
+          links.push(link);
+        }
       }
+      perWatch.push({ label: w.label, links });
+      watchStats.push({ watch: w.label, found: total, fresh: links.length, reachable: !!content });
     }
-    const head = candidates.slice(0, 30);
-    const exists = await Promise.all(head.map((u) => leadExistsForUrl(u).catch(() => false)));
-    const fresh = head.filter((_, i) => !exists[i]).slice(0, NEW_CAP);
+
+    // Round-robin across watches so every source is sampled each run, not just
+    // whichever ones happen to come first.
+    const ordered: string[] = [];
+    for (let i = 0; ordered.length < EXAMINE_CAP; i++) {
+      let any = false;
+      for (const pw of perWatch) {
+        if (pw.links[i] != null) {
+          ordered.push(pw.links[i]);
+          any = true;
+          if (ordered.length >= EXAMINE_CAP) break;
+        }
+      }
+      if (!any) break;
+    }
+
+    const exists = await Promise.all(ordered.map((u) => leadExistsForUrl(u).catch(() => false)));
+    const fresh = ordered.filter((_, i) => !exists[i]).slice(0, NEW_CAP);
 
     let created = 0;
     let skipped = 0;
+    const examined: ScanSummary["examined"] = [];
     await Promise.all(
       fresh.map(async (url) => {
         try {
           const res = await importListing({ url });
-          if (!res.ok || !res.fields.name) return;
-          if (!matchesCriteria(res.fields, criteria).include) {
+          if (!res.ok || !res.fields.name) {
+            examined.push({ url, name: res.fields?.name || "", ok: false, reasons: [res.blocked ? "blocked/unreadable" : "no data extracted"] });
+            return;
+          }
+          const verdict = matchesCriteria(res.fields, criteria);
+          examined.push({ url, name: res.fields.name, ok: verdict.include, reasons: verdict.reasons });
+          if (!verdict.include) {
             skipped++;
             return;
           }
@@ -120,11 +155,11 @@ export async function runScan(): Promise<ScanSummary> {
           });
           created++;
         } catch {
-          /* skip */
+          examined.push({ url, name: "", ok: false, reasons: ["error"] });
         }
       }),
     );
-    return { created, skipped };
+    return { created, skipped, watchStats, examined };
   }
 
   // ── B. Re-check availability of listings we're already tracking ────────────
@@ -184,5 +219,7 @@ export async function runScan(): Promise<ScanSummary> {
     skipped: disc.skipped,
     rechecked: Math.min(RECHECK_CAP, leads.filter((l) => (l.status === "new" || l.status === "reviewing") && l.url).length + properties.filter((p) => p.listingUrl).length),
     alerts,
+    watchStats: disc.watchStats,
+    examined: disc.examined,
   };
 }
