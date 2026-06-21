@@ -81,9 +81,12 @@ export function MacWorkbench({ propertyId, initial }: { propertyId: string; init
             {savedAt && !dirty && <span className="ml-3 text-status-go">Saved · {savedAt}</span>}
             {dirty && <span className="ml-3 text-bronze-dark">Unsaved changes</span>}
           </div>
-          <button onClick={save} disabled={pending} className="btn-primary disabled:opacity-60">
-            {pending ? "Saving…" : "Save MAC"}
-          </button>
+          <div className="flex items-center gap-2">
+            <Link href={`/property/${propertyId}/mac/print`} className="btn-ghost">PDF / Print</Link>
+            <button onClick={save} disabled={pending} className="btn-primary disabled:opacity-60">
+              {pending ? "Saving…" : "Save MAC"}
+            </button>
+          </div>
         </div>
       </div>
 

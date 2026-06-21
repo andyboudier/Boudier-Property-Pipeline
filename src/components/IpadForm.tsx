@@ -130,9 +130,12 @@ export function IpadForm({ propertyId, initial }: { propertyId: string; initial:
             {savedAt && !dirty && <span className="text-status-go">Saved · {savedAt}</span>}
             {dirty && <span className="text-bronze-dark">Unsaved changes</span>}
           </div>
-          <button onClick={save} disabled={pending} className="btn-primary disabled:opacity-60">
-            {pending ? "Saving…" : "Save IPAD"}
-          </button>
+          <div className="flex items-center gap-2">
+            <Link href={`/property/${propertyId}/ipad/print`} className="btn-ghost">PDF / Print</Link>
+            <button onClick={save} disabled={pending} className="btn-primary disabled:opacity-60">
+              {pending ? "Saving…" : "Save IPAD"}
+            </button>
+          </div>
         </div>
       </div>
 
