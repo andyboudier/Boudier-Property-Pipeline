@@ -489,16 +489,29 @@ function fcRelease(): void {
 async function tryFirecrawl(url: string): Promise<string | null> {
   const key = process.env.FIRECRAWL_API_KEY;
   if (!key) return null;
+  // Portals (Rightmove/Zoopla/OnTheMarket) serve empty anti-bot pages to plain
+  // proxies, so render them through the stealth (residential) proxy.
+  let stealth = false;
+  try {
+    stealth = /(rightmove|zoopla|onthemarket)\./i.test(new URL(url).hostname);
+  } catch {
+    /* keep default */
+  }
   await fcAcquire();
   try {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 22000);
+    const timer = setTimeout(() => ctrl.abort(), stealth ? 40000 : 22000);
     const res = await fetch("https://api.firecrawl.dev/v1/scrape", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "content-type": "application/json" },
       // Ask for rendered links too — portal search pages (Zoopla, JS agent
       // sites) hold their listing links in script-rendered markup, not markdown.
-      body: JSON.stringify({ url, formats: ["markdown", "links"], onlyMainContent: true }),
+      body: JSON.stringify({
+        url,
+        formats: ["markdown", "links"],
+        onlyMainContent: !stealth,
+        ...(stealth ? { proxy: "stealth", waitFor: 3500 } : {}),
+      }),
       signal: ctrl.signal,
     });
     clearTimeout(timer);

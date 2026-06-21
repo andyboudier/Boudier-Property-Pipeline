@@ -36,7 +36,7 @@ function portalDetail(u: string): boolean | null {
   return null; // not a known portal
 }
 
-const NEW_CAP = 8; // new prospects added per run (each costs an AI call)
+const NEW_CAP = 6; // new prospects added per run (each costs an AI call)
 const EXAMINE_CAP = 40; // candidate links inspected per run before the NEW_CAP cut
 const RECHECK_CAP = 10; // tracked listings re-checked per run (cheap, no AI)
 
@@ -100,6 +100,8 @@ export async function runScan(): Promise<ScanSummary> {
   // ── A. Discover new prospects from watched agent pages ─────────────────────
   async function discover(): Promise<{ created: number; skipped: number; watchStats: ScanSummary["watchStats"]; examined: ScanSummary["examined"] }> {
     if (watches.length === 0) return { created: 0, skipped: 0, watchStats: [], examined: [] };
+    const t0 = Date.now();
+    const isPortal = (u: string) => /(rightmove|zoopla|onthemarket)\./i.test(u);
     const pages = await Promise.all(
       watches.map(async (w) => {
         await touchWatch(w.id);
@@ -153,6 +155,12 @@ export async function runScan(): Promise<ScanSummary> {
     await Promise.all(
       fresh.map(async (url) => {
         try {
+          // Stay within the 60s function budget: don't start a slow stealth
+          // portal import late, and stop all imports near the deadline.
+          if (Date.now() > t0 + 50000 || (isPortal(url) && Date.now() > t0 + 32000)) {
+            examined.push({ url, name: "", ok: false, reasons: ["skipped: time budget"] });
+            return;
+          }
           const res = await importListing({ url });
           if (!res.ok || !res.fields.name) {
             examined.push({ url, name: res.fields?.name || "", ok: false, reasons: [res.blocked ? "blocked/unreadable" : "no data extracted"] });
