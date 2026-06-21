@@ -1,32 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { startAuthentication } from "@simplewebauthn/browser";
 
-export function UnlockForm({ from }: { from: string }) {
-  const [pin, setPin] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+export function UnlockForm({ from, hadError }: { from: string; hadError?: boolean }) {
+  const [error, setError] = useState<string | null>(hadError ? "Incorrect code." : null);
   const [bioBusy, setBioBusy] = useState(false);
-
-  const go = () => window.location.assign(from || "/");
-
-  function submit() {
-    setError(null);
-    startTransition(async () => {
-      const r = await fetch("/api/unlock", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ pin }),
-      });
-      const j = await r.json().catch(() => ({ ok: false }));
-      if (j.ok) go();
-      else {
-        setError("Incorrect code.");
-        setPin("");
-      }
-    });
-  }
 
   async function touchId() {
     setError(null);
@@ -45,7 +24,7 @@ export function UnlockForm({ from }: { from: string }) {
         body: JSON.stringify(resp),
       });
       const j = await vRes.json();
-      if (j.ok) go();
+      if (j.ok) window.location.assign(from || "/");
       else setError(j.error || "Touch ID failed.");
     } catch (e) {
       if (!(e instanceof Error) || e.name !== "NotAllowedError") {
@@ -66,25 +45,21 @@ export function UnlockForm({ from }: { from: string }) {
         <span className="h-px flex-1 bg-paper-line" /> or code <span className="h-px flex-1 bg-paper-line" />
       </div>
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit();
-        }}
-      >
+      {/* Native form POST → server sets the cookie on a redirect (works in every browser). */}
+      <form method="POST" action="/api/unlock">
+        <input type="hidden" name="from" value={from} />
         <input
           autoFocus
+          name="pin"
           type="password"
           inputMode="numeric"
           autoComplete="off"
-          value={pin}
-          onChange={(e) => setPin(e.target.value)}
           placeholder="••••"
           className="field text-center text-2xl tracking-[0.5em]"
           aria-label="Access code"
         />
-        <button type="submit" disabled={pending || !pin} className="btn-bronze mt-3 w-full disabled:opacity-60">
-          {pending ? "Checking…" : "Unlock"}
+        <button type="submit" className="btn-bronze mt-3 w-full">
+          Unlock
         </button>
       </form>
 
