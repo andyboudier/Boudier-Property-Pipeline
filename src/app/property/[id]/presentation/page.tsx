@@ -21,7 +21,8 @@ const PAPER = "#F6F5F0";
 const CREAM = "#F5E8D4";
 const MUTED = "#6B7280";
 const LINE = "#E4E0D8";
-const LOGO = "/boudier-logo.png";
+const LOGO = "/boudier-logo.png"; // green-badge — for light backgrounds
+const LOGO_LIGHT = "/boudier-logo-transparent.png"; // transparent — for the dark cover
 
 const serif = { fontFamily: "var(--pres-serif)" };
 
@@ -55,7 +56,7 @@ export default async function PresentationPage({ params }: { params: { id: strin
         <section className="pres-page" style={{ background: INK, color: "#fff" }}>
           <div style={{ padding: "40px 44px", display: "flex", flexDirection: "column", minHeight: "1000px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <img src={LOGO} alt="Boudier Property" style={{ height: 56, objectFit: "contain", borderRadius: 8 }} />
+              <img src={LOGO_LIGHT} alt="Boudier Property" style={{ height: 60, objectFit: "contain" }} />
               <span style={{ fontSize: 11, letterSpacing: "0.28em", textTransform: "uppercase", color: GOLD }}>Investment Opportunity</span>
             </div>
 
