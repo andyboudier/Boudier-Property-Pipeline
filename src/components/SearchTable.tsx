@@ -5,8 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { ProcedabilityStatus } from "@/lib/types";
 import { statusMeta } from "@/lib/procedability";
-import { actionDeleteProperty, actionClearPropertyAlert } from "@/app/actions";
-import { StatusBadge } from "./Procedability";
+import { actionDeleteProperty, actionClearPropertyAlert, actionSetStatusOverride } from "@/app/actions";
 import { gbp, num, pct } from "@/lib/format";
 import type { MarketAlert } from "@/lib/types";
 
@@ -20,7 +19,9 @@ export interface Row {
   sizeSqFt: number | null;
   guidePrice: number | null;
   currentUse: string;
-  status: ProcedabilityStatus;
+  status: ProcedabilityStatus; // displayed status (override if set, else auto)
+  autoStatus: ProcedabilityStatus; // computed status (for the "Auto" option)
+  overridden?: boolean; // true when status was set manually
   headline: string;
   score: number;
   dcasPct: number;
@@ -135,7 +136,7 @@ export function SearchTable({ rows }: { rows: Row[] }) {
                   <StageDots dcas={r.dcasStarted} mac={r.macStarted} ipad={r.ipadStarted} />
                 </td>
                 <td className="px-4 py-3">
-                  <StatusBadge status={r.status} size="sm" />
+                  <StatusSelect id={r.id} value={r.status} autoStatus={r.autoStatus} overridden={r.overridden} />
                 </td>
                 <td className="px-4 py-3 text-right">
                   <DeleteButton id={r.id} name={r.name} />
@@ -153,6 +154,43 @@ export function SearchTable({ rows }: { rows: Row[] }) {
         </table>
       </div>
     </section>
+  );
+}
+
+const STATUS_OPTIONS: ProcedabilityStatus[] = ["proceedable", "review", "not-proceedable", "incomplete"];
+
+function StatusSelect({ id, value, autoStatus, overridden }: { id: string; value: ProcedabilityStatus; autoStatus: ProcedabilityStatus; overridden?: boolean }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const m = statusMeta(value);
+
+  function onChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const v = e.target.value;
+    startTransition(async () => {
+      await actionSetStatusOverride(id, v === "auto" ? null : (v as ProcedabilityStatus));
+      router.refresh();
+    });
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1">
+      <select
+        value={overridden ? value : "auto"}
+        onChange={onChange}
+        disabled={pending}
+        title={overridden ? `Set manually — Auto would be “${statusMeta(autoStatus).label}”` : "Auto (from criteria)"}
+        className="cursor-pointer rounded-full border px-2 py-1 text-xs font-semibold focus:outline-none disabled:opacity-60"
+        style={{ borderColor: `${m.color}55`, background: `${m.color}14`, color: m.color }}
+      >
+        <option value="auto">Auto · {statusMeta(autoStatus).label}</option>
+        {STATUS_OPTIONS.map((s) => (
+          <option key={s} value={s}>
+            {statusMeta(s).label}
+          </option>
+        ))}
+      </select>
+      {overridden && <span title="Manually set" className="text-[10px] text-ink-muted">✎</span>}
+    </span>
   );
 }
 

@@ -56,6 +56,13 @@ export async function actionSaveInvestor(id: string, investor: import("@/lib/typ
   return { ok: true };
 }
 
+export async function actionSetStatusOverride(id: string, status: Property["statusOverride"]) {
+  await updateProperty(id, { statusOverride: status ?? null });
+  revalidatePath(`/`);
+  revalidatePath(`/property/${id}`);
+  return { ok: true };
+}
+
 export async function actionUpdateProperty(id: string, patch: Partial<Property>) {
   await updateProperty(id, patch);
   revalidatePath(`/property/${id}`);

@@ -222,6 +222,7 @@ export interface Property {
   marketStatus?: string; // "For Sale" | "Under Offer" | "Sold" | "Withdrawn" | "" (from the listing)
   alert?: MarketAlert; // raised when the listing's market status changes
   statusCheckedAt?: string; // last time the listing was re-checked for availability
+  statusOverride?: ProcedabilityStatus | null; // manual pipeline status; null/undefined = auto
 
   dcas?: Dcas;
   mac?: Mac;
