@@ -135,3 +135,97 @@ export function segmentStats(seg: MacSegment, refDate: string): SegmentStats {
 }
 
 export { daysOnMarket };
+
+// ── Report summary (mirrors the Excel "Summary" sheet) ───────────────────────
+export interface MacProfileRow {
+  label: string;
+  total: number;
+  unsold: number;
+  salesRatio: number; // 1 - unsold/total
+  pctOfAll: number; // total / all-total
+}
+export interface MacSummaryData {
+  projectName: string;
+  date: string;
+  segments: { label: string; stats: SegmentStats }[];
+  byType: { rows: MacProfileRow[]; flats: MacProfileRow; houses: MacProfileRow; all: MacProfileRow };
+  byBeds: { rows: MacProfileRow[]; all: MacProfileRow };
+}
+
+const FLAT_TYPES = ["Flat (purpose-built)", "Flat (conversion)", "Maisonette", "Duplex"];
+const BUNGALOW_TYPES = ["Detached Bungalow", "Attached Bungalow"];
+const TYPE_ROWS = ["Studio", "1-bed Flat", "2-bed Flat", "3-bed Flat", "Bungalow", "Terraced", "Semi", "Detached"];
+const BED_ROWS = ["1-bed", "2-bed", "3-bed", "4-bed", "5-bed", "6+-bed"];
+
+function typeBucket(c: MacComp): string | null {
+  const t = c.propertyType;
+  if (FLAT_TYPES.includes(t)) {
+    if (c.beds === 0) return "Studio";
+    if (c.beds === 1) return "1-bed Flat";
+    if (c.beds === 2) return "2-bed Flat";
+    if (typeof c.beds === "number" && c.beds >= 3) return "3-bed Flat";
+    return null; // flat with unknown beds — can't place
+  }
+  if (BUNGALOW_TYPES.includes(t)) return "Bungalow";
+  if (t === "Terraced House") return "Terraced";
+  if (t === "Semi-detached House") return "Semi";
+  if (t === "Detached House") return "Detached";
+  return null;
+}
+function bedBucket(c: MacComp): string | null {
+  if (typeof c.beds !== "number" || c.beds < 1) return null;
+  if (c.beds >= 6) return "6+-bed";
+  return `${c.beds}-bed`;
+}
+
+function profileRow(label: string, comps: MacComp[], allTotal: number): MacProfileRow {
+  const total = comps.length;
+  const unsold = comps.filter((c) => !SOLD_STATUSES.includes(c.status)).length;
+  return {
+    label,
+    total,
+    unsold,
+    salesRatio: total > 0 ? (total - unsold) / total : 0,
+    pctOfAll: allTotal > 0 ? total / allTotal : 0,
+  };
+}
+
+export function macSummary(mac: Mac): MacSummaryData {
+  const allComps = mac.segments.flatMap((s) => s.comps.filter((c) => c.property.trim() !== ""));
+
+  // Profile by property type
+  const typeOf = new Map<string, MacComp[]>(TYPE_ROWS.map((r) => [r, []]));
+  for (const c of allComps) {
+    const b = typeBucket(c);
+    if (b) typeOf.get(b)!.push(c);
+  }
+  const typeTotal = TYPE_ROWS.reduce((n, r) => n + typeOf.get(r)!.length, 0);
+  const typeRows = TYPE_ROWS.map((r) => profileRow(r, typeOf.get(r)!, typeTotal));
+  const flatsComps = TYPE_ROWS.slice(0, 4).flatMap((r) => typeOf.get(r)!);
+  const housesComps = TYPE_ROWS.slice(4).flatMap((r) => typeOf.get(r)!);
+
+  // Profile by number of bedrooms
+  const bedOf = new Map<string, MacComp[]>(BED_ROWS.map((r) => [r, []]));
+  for (const c of allComps) {
+    const b = bedBucket(c);
+    if (b) bedOf.get(b)!.push(c);
+  }
+  const bedTotal = BED_ROWS.reduce((n, r) => n + bedOf.get(r)!.length, 0);
+  const bedRows = BED_ROWS.map((r) => profileRow(r, bedOf.get(r)!, bedTotal));
+
+  return {
+    projectName: mac.projectName,
+    date: mac.date,
+    segments: mac.segments.map((s) => ({ label: s.label, stats: segmentStats(s, mac.date) })),
+    byType: {
+      rows: typeRows,
+      flats: profileRow("Flats", flatsComps, typeTotal),
+      houses: profileRow("Houses", housesComps, typeTotal),
+      all: profileRow("All", [...flatsComps, ...housesComps], typeTotal),
+    },
+    byBeds: {
+      rows: bedRows,
+      all: profileRow("All", BED_ROWS.flatMap((r) => bedOf.get(r)!), bedTotal),
+    },
+  };
+}

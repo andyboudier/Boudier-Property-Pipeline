@@ -7,12 +7,14 @@ import { MAC_OPTIONS, emptyComp, emptySegment, segmentStats, pricePerM2, daysOnM
 import { actionSaveMac } from "@/app/actions";
 import { gbp, num } from "@/lib/format";
 import { useAutosave } from "@/lib/useAutosave";
+import { MacSummaryView } from "./MacSummaryView";
 
 const RADIUS_OPTS = ["Exact Area Only", "Within 1/4 mile", "Within 1/2 mile", "Within 1 mile", "Within 3 miles"];
 const TYPE_FILTERS = ["Flats/Apartments", "Houses", "Bungalows", "Any"];
 
 export function MacWorkbench({ propertyId, initial }: { propertyId: string; initial: Mac }) {
   const [mac, setMac] = useState<Mac>(initial);
+  const [showSummary, setShowSummary] = useState(false);
   const { status, savedAt, dirty, saveNow } = useAutosave(mac, (v) => actionSaveMac(propertyId, v));
   const pending = status === "saving";
 
@@ -81,6 +83,7 @@ export function MacWorkbench({ propertyId, initial }: { propertyId: string; init
             )}
           </div>
           <div className="flex items-center gap-2">
+            <button onClick={() => setShowSummary(true)} className="btn-ghost">Summary</button>
             <Link href={`/property/${propertyId}/mac/print`} className="btn-ghost">PDF / Print</Link>
             <button onClick={saveNow} disabled={pending} className="btn-primary disabled:opacity-60">
               {pending ? "Saving…" : "Save now"}
@@ -130,6 +133,8 @@ export function MacWorkbench({ propertyId, initial }: { propertyId: string; init
           </button>
         </div>
       </div>
+
+      {showSummary && <MacSummaryView mac={mac} onClose={() => setShowSummary(false)} />}
     </div>
   );
 }
