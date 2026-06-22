@@ -286,6 +286,18 @@ export interface WatchSource {
   url: string;
   createdAt: string;
   lastScanAt?: string;
+  lastResult?: WatchResult; // outcome of the most recent scan of this source
+}
+
+// What the last scan of a single watched source produced.
+export interface WatchResult {
+  scannedAt: string;
+  reachable: boolean; // false when the page couldn't be read
+  found: number; // listing links seen on the page
+  fresh: number; // of those, not already held/ignored
+  added: number; // prospects created from this source this run
+  skipped: number; // examined but filtered out by criteria
+  samples: { name: string; url: string; ok: boolean; reasons: string[] }[]; // listings examined this run
 }
 
 export interface ProcedabilitySettings {

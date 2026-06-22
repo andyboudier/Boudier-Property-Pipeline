@@ -11,6 +11,7 @@ import {
   updateLead,
   updateProperty,
   ignoredUrlSet,
+  saveWatchResult,
 } from "./db";
 import { importListing, fetchRawContent, checkMarketStatus } from "./importListing";
 import { matchesCriteria } from "./monitorCriteria";
@@ -119,8 +120,10 @@ export async function runScan(): Promise<ScanSummary> {
     // Collect fresh candidates per watch (deduped against each other + what we
     // already hold or have ignored).
     const seen = new Set<string>();
-    const perWatch: { label: string; links: string[] }[] = [];
+    const perWatch: { id: string; label: string; links: string[] }[] = [];
     const watchStats: ScanSummary["watchStats"] = [];
+    const urlToWatch = new Map<string, string>(); // listing url → watch id
+    const statByWatch = new Map<string, { found: number; fresh: number; reachable: boolean }>();
     for (const { w, content } of pages) {
       const links: string[] = [];
       let total = 0;
@@ -131,10 +134,12 @@ export async function runScan(): Promise<ScanSummary> {
           if (seen.has(link) || knownUrls.has(link) || ignored.has(link)) continue;
           seen.add(link);
           links.push(link);
+          urlToWatch.set(link, w.id);
         }
       }
-      perWatch.push({ label: w.label, links });
+      perWatch.push({ id: w.id, label: w.label, links });
       watchStats.push({ watch: w.label, url: w.url, found: total, fresh: links.length, reachable: !!content });
+      statByWatch.set(w.id, { found: total, fresh: links.length, reachable: !!content });
     }
 
     // Rotate which watch leads the round-robin each run (changes hourly) so the
@@ -206,6 +211,33 @@ export async function runScan(): Promise<ScanSummary> {
         }
       }),
     );
+
+    // Persist a per-source summary so each agent shows its last scan result.
+    const examinedByWatch = new Map<string, ScanSummary["examined"]>();
+    for (const e of examined) {
+      const id = urlToWatch.get(e.url);
+      if (!id) continue;
+      const arr = examinedByWatch.get(id) ?? [];
+      arr.push(e);
+      examinedByWatch.set(id, arr);
+    }
+    const scannedAt = new Date().toISOString();
+    await Promise.all(
+      toFetch.map((w) => {
+        const items = examinedByWatch.get(w.id) ?? [];
+        const s = statByWatch.get(w.id) ?? { found: 0, fresh: 0, reachable: false };
+        return saveWatchResult(w.id, {
+          scannedAt,
+          reachable: s.reachable,
+          found: s.found,
+          fresh: s.fresh,
+          added: items.filter((i) => i.ok).length,
+          skipped: items.filter((i) => !i.ok).length,
+          samples: items.slice(0, 12).map((i) => ({ name: i.name, url: i.url, ok: i.ok, reasons: i.reasons })),
+        }).catch(() => {});
+      }),
+    );
+
     return { created, skipped, watchStats, examined };
   }
 

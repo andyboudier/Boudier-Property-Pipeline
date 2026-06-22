@@ -253,6 +253,7 @@ function Watchlist({ initialWatch }: { initialWatch: WatchSource[] }) {
   const [pending, startTransition] = useTransition();
   const [scanning, setScanning] = useState(false);
   const [scanMsg, setScanMsg] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
 
   async function scanNow() {
     setScanning(true);
@@ -312,17 +313,65 @@ function Watchlist({ initialWatch }: { initialWatch: WatchSource[] }) {
       {initialWatch.length > 0 && (
         <ul className="mt-3 divide-y divide-paper-line border-t border-paper-line">
           {initialWatch.map((w) => (
-            <li key={w.id} className="flex items-center justify-between gap-2 py-2 text-sm">
-              <span className="min-w-0">
-                <span className="text-ink">{w.label}</span>
-                <span className="ml-2 truncate text-xs text-ink-muted">{w.url}</span>
-                {w.lastScanAt && <span className="ml-2 text-[11px] text-ink-muted">scanned {new Date(w.lastScanAt).toLocaleDateString("en-GB")}</span>}
-              </span>
-              <button onClick={() => delW(w.id)} disabled={pending} className="shrink-0 text-xs text-ink-muted hover:text-status-stop">Remove</button>
+            <li key={w.id} className="py-2 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <span className="min-w-0">
+                  <span className="text-ink">{w.label}</span>
+                  <span className="ml-2 truncate text-xs text-ink-muted">{w.url}</span>
+                  {w.lastScanAt && <span className="ml-2 text-[11px] text-ink-muted">scanned {new Date(w.lastScanAt).toLocaleDateString("en-GB")}</span>}
+                </span>
+                <span className="flex shrink-0 items-center gap-3">
+                  <button onClick={() => setOpenId(openId === w.id ? null : w.id)} className="text-xs text-bronze-dark hover:underline">
+                    {openId === w.id ? "Hide" : "Summary"}
+                  </button>
+                  <button onClick={() => delW(w.id)} disabled={pending} className="text-xs text-ink-muted hover:text-status-stop">Remove</button>
+                </span>
+              </div>
+              {openId === w.id && <WatchSummary w={w} />}
             </li>
           ))}
         </ul>
       )}
     </section>
+  );
+}
+
+function WatchSummary({ w }: { w: WatchSource }) {
+  const r = w.lastResult;
+  if (!r) {
+    return <div className="mt-2 rounded-md bg-paper-warm/60 p-3 text-xs text-ink-muted">Not scanned yet — run “Scan now” or wait for the daily scan.</div>;
+  }
+  const when = new Date(r.scannedAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  return (
+    <div className="mt-2 rounded-md bg-paper-warm/60 p-3 text-xs">
+      <div className="mb-1 text-ink-muted">Last scanned {when}</div>
+      {!r.reachable ? (
+        <div className="text-status-stop">⚠ Couldn’t read the page (blocked or unreachable). It will be retried on the next scan.</div>
+      ) : (
+        <>
+          <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-ink-soft">
+            <span><span className="font-semibold text-ink">{r.found}</span> listings on page</span>
+            <span><span className="font-semibold text-ink">{r.fresh}</span> new</span>
+            <span className="text-status-go"><span className="font-semibold">{r.added}</span> added</span>
+            <span><span className="font-semibold">{r.skipped}</span> filtered out</span>
+          </div>
+          {r.samples.length > 0 ? (
+            <ul className="mt-2 space-y-1">
+              {r.samples.map((s, i) => (
+                <li key={i} className="flex gap-2">
+                  <span className={s.ok ? "text-status-go" : "text-ink-muted"}>{s.ok ? "✓" : "✕"}</span>
+                  <span className="min-w-0">
+                    <span className="text-ink">{s.name || "(unnamed listing)"}</span>
+                    {!s.ok && s.reasons.length > 0 && <span className="text-ink-muted"> — {s.reasons.join(", ")}</span>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="mt-1 text-ink-muted">No listings examined this run (they’re sampled across all sources each scan; new ones here will be checked on an upcoming run).</div>
+          )}
+        </>
+      )}
+    </div>
   );
 }

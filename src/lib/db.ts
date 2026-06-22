@@ -1,5 +1,5 @@
 import "server-only";
-import type { Property, ProcedabilitySettings, Dcas, Mac, Ipad, PropertySnapshot, Lead, WatchSource, MonitorCriteria } from "./types";
+import type { Property, ProcedabilitySettings, Dcas, Mac, Ipad, PropertySnapshot, Lead, WatchSource, MonitorCriteria, WatchResult } from "./types";
 import { getDb, isFirestoreConfigured } from "./firebaseAdmin";
 import { SEED_PROPERTIES } from "./seedData";
 import { DEFAULT_SETTINGS } from "./procedability";
@@ -227,6 +227,18 @@ export async function touchWatch(id: string): Promise<void> {
     return;
   }
   await db.collection(WATCHLIST).doc(id).set({ lastScanAt: now() }, { merge: true });
+}
+export async function saveWatchResult(id: string, result: WatchResult): Promise<void> {
+  const db = getDb();
+  if (!db) {
+    const w = memWatch().find((x) => x.id === id);
+    if (w) {
+      w.lastResult = result;
+      w.lastScanAt = result.scannedAt;
+    }
+    return;
+  }
+  await db.collection(WATCHLIST).doc(id).set({ lastResult: stripUndefined(result), lastScanAt: result.scannedAt }, { merge: true });
 }
 
 // ── Ignored listings (deleted prospects — never auto-add again) ────────────────
