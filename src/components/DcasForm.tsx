@@ -6,6 +6,7 @@ import type { Dcas, RatingValue } from "@/lib/types";
 import { RATINGS, ratingColor } from "@/lib/ratings";
 import { dcasStats } from "@/lib/dcasSchema";
 import { actionSaveDcas } from "@/app/actions";
+import { useAutosave } from "@/lib/useAutosave";
 
 export function DcasForm({
   propertyId,
@@ -48,6 +49,8 @@ export function DcasForm({
     });
   }
 
+  useAutosave({ data: dcas, dirty, save, persist: () => void actionSaveDcas(propertyId, dcas) });
+
   return (
     <div className="space-y-6">
       {/* Sticky action bar */}
@@ -61,15 +64,22 @@ export function DcasForm({
               <Pill color="#B23A48" label={`${stats.criticals} critical`} />
               <Pill color="#C2872B" label={`${stats.concerning} concerning`} />
             </span>
-            {savedAt && !dirty && <span className="text-status-go">Saved · {savedAt}</span>}
-            {dirty && <span className="text-bronze-dark">Unsaved changes</span>}
+            {pending ? (
+              <span className="text-bronze-dark">Saving…</span>
+            ) : dirty ? (
+              <span className="text-ink-muted">Editing…</span>
+            ) : savedAt ? (
+              <span className="text-status-go">Saved · {savedAt}</span>
+            ) : (
+              <span className="text-ink-muted">Autosaves as you go</span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Link href={`/property/${propertyId}/dcas/print`} className="btn-ghost">
               PDF / Print
             </Link>
             <button onClick={save} disabled={pending} className="btn-primary disabled:opacity-60">
-              {pending ? "Saving…" : "Save DCAS"}
+              {pending ? "Saving…" : "Save now"}
             </button>
           </div>
         </div>
@@ -152,7 +162,7 @@ export function DcasForm({
           Back to overview
         </Link>
         <button onClick={save} disabled={pending} className="btn-primary disabled:opacity-60">
-          {pending ? "Saving…" : "Save DCAS"}
+          {pending ? "Saving…" : "Save now"}
         </button>
       </div>
     </div>

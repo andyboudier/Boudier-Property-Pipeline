@@ -6,6 +6,7 @@ import type { Mac, MacComp, MacSegment } from "@/lib/types";
 import { MAC_OPTIONS, emptyComp, emptySegment, segmentStats, pricePerM2, daysOnMarket } from "@/lib/macCalc";
 import { actionSaveMac } from "@/app/actions";
 import { gbp, num } from "@/lib/format";
+import { useAutosave } from "@/lib/useAutosave";
 
 const RADIUS_OPTS = ["Exact Area Only", "Within 1/4 mile", "Within 1/2 mile", "Within 1 mile", "Within 3 miles"];
 const TYPE_FILTERS = ["Flats/Apartments", "Houses", "Bungalows", "Any"];
@@ -71,6 +72,8 @@ export function MacWorkbench({ propertyId, initial }: { propertyId: string; init
     });
   }
 
+  useAutosave({ data: mac, dirty, save, persist: () => void actionSaveMac(propertyId, mac) });
+
   return (
     <div className="space-y-6">
       {/* Sticky bar */}
@@ -78,13 +81,20 @@ export function MacWorkbench({ propertyId, initial }: { propertyId: string; init
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm text-ink-muted">
             {mac.segments.length} segment{mac.segments.length === 1 ? "" : "s"}
-            {savedAt && !dirty && <span className="ml-3 text-status-go">Saved · {savedAt}</span>}
-            {dirty && <span className="ml-3 text-bronze-dark">Unsaved changes</span>}
+            {pending ? (
+              <span className="ml-3 text-bronze-dark">Saving…</span>
+            ) : dirty ? (
+              <span className="ml-3 text-ink-muted">Editing…</span>
+            ) : savedAt ? (
+              <span className="ml-3 text-status-go">Saved · {savedAt}</span>
+            ) : (
+              <span className="ml-3 text-ink-muted">Autosaves as you go</span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Link href={`/property/${propertyId}/mac/print`} className="btn-ghost">PDF / Print</Link>
             <button onClick={save} disabled={pending} className="btn-primary disabled:opacity-60">
-              {pending ? "Saving…" : "Save MAC"}
+              {pending ? "Saving…" : "Save now"}
             </button>
           </div>
         </div>
@@ -127,7 +137,7 @@ export function MacWorkbench({ propertyId, initial }: { propertyId: string; init
         <div className="flex gap-2">
           <Link href={`/property/${propertyId}`} className="btn-ghost">Back to overview</Link>
           <button onClick={save} disabled={pending} className="btn-primary disabled:opacity-60">
-            {pending ? "Saving…" : "Save MAC"}
+            {pending ? "Saving…" : "Save now"}
           </button>
         </div>
       </div>

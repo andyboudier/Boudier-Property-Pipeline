@@ -6,6 +6,7 @@ import type { Ipad, IpadInputs, IpadUnit } from "@/lib/types";
 import { computeIpad, sqmToSqft } from "@/lib/ipadCalc";
 import { actionSaveIpad } from "@/app/actions";
 import { gbp, num, pct } from "@/lib/format";
+import { useAutosave } from "@/lib/useAutosave";
 
 type Kind = "money" | "num" | "pct" | "months";
 interface FieldDef {
@@ -116,6 +117,8 @@ export function IpadForm({ propertyId, initial }: { propertyId: string; initial:
     });
   }
 
+  useAutosave({ data: inp, dirty, save, persist: () => void actionSaveIpad(propertyId, { inputs: inp }) });
+
   const profitColor = out.profitOnGdvPct >= 0.18 ? "#2E7D5B" : out.profitOnGdvPct >= 0 ? "#C2872B" : "#B23A48";
 
   return (
@@ -127,13 +130,20 @@ export function IpadForm({ propertyId, initial }: { propertyId: string; initial:
             <span className="text-ink-muted">GDV <strong className="tabular-nums text-ink">{gbp(out.gdv)}</strong></span>
             <span className="text-ink-muted">Net profit <strong className="tabular-nums" style={{ color: out.netProfit >= 0 ? "#2E7D5B" : "#B23A48" }}>{gbp(out.netProfit)}</strong></span>
             <span className="text-ink-muted">on GDV <strong className="tabular-nums" style={{ color: profitColor }}>{pct(out.profitOnGdvPct)}</strong></span>
-            {savedAt && !dirty && <span className="text-status-go">Saved · {savedAt}</span>}
-            {dirty && <span className="text-bronze-dark">Unsaved changes</span>}
+            {pending ? (
+              <span className="text-bronze-dark">Saving…</span>
+            ) : dirty ? (
+              <span className="text-ink-muted">Editing…</span>
+            ) : savedAt ? (
+              <span className="text-status-go">Saved · {savedAt}</span>
+            ) : (
+              <span className="text-ink-muted">Autosaves as you go</span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Link href={`/property/${propertyId}/ipad/print`} className="btn-ghost">PDF / Print</Link>
             <button onClick={save} disabled={pending} className="btn-primary disabled:opacity-60">
-              {pending ? "Saving…" : "Save IPAD"}
+              {pending ? "Saving…" : "Save now"}
             </button>
           </div>
         </div>
@@ -255,7 +265,7 @@ export function IpadForm({ propertyId, initial }: { propertyId: string; initial:
           <div className="mt-3 flex gap-2">
             <Link href={`/property/${propertyId}`} className="btn-ghost flex-1">Overview</Link>
             <button onClick={save} disabled={pending} className="btn-primary flex-1 disabled:opacity-60">
-              {pending ? "Saving…" : "Save IPAD"}
+              {pending ? "Saving…" : "Save now"}
             </button>
           </div>
         </div>
