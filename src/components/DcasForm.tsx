@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState } from "react";
 import type { Dcas, RatingValue } from "@/lib/types";
 import { RATINGS, ratingColor } from "@/lib/ratings";
 import { dcasStats } from "@/lib/dcasSchema";
@@ -18,15 +18,13 @@ export function DcasForm({
   guidePrice: number | null;
 }) {
   const [dcas, setDcas] = useState<Dcas>(initial);
-  const [pending, startTransition] = useTransition();
-  const [savedAt, setSavedAt] = useState<string | null>(null);
-  const [dirty, setDirty] = useState(false);
+  const { status, savedAt, dirty, saveNow } = useAutosave(dcas, (d) => actionSaveDcas(propertyId, d));
+  const pending = status === "saving";
 
   const stats = useMemo(() => dcasStats(dcas), [dcas]);
 
   function patchMeta(patch: Partial<Pick<Dcas, "opportunity" | "description" | "date" | "overallComments">>) {
     setDcas((d) => ({ ...d, ...patch }));
-    setDirty(true);
   }
 
   function patchItem(sectionKey: string, itemId: string, patch: { rating?: RatingValue; note?: string }) {
@@ -38,18 +36,7 @@ export function DcasForm({
           : { ...s, items: s.items.map((it) => (it.id === itemId ? { ...it, ...patch } : it)) },
       ),
     }));
-    setDirty(true);
   }
-
-  function save() {
-    startTransition(async () => {
-      await actionSaveDcas(propertyId, dcas);
-      setSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-      setDirty(false);
-    });
-  }
-
-  useAutosave({ data: dcas, dirty, save, persist: () => void actionSaveDcas(propertyId, dcas) });
 
   return (
     <div className="space-y-6">
@@ -78,7 +65,7 @@ export function DcasForm({
             <Link href={`/property/${propertyId}/dcas/print`} className="btn-ghost">
               PDF / Print
             </Link>
-            <button onClick={save} disabled={pending} className="btn-primary disabled:opacity-60">
+            <button onClick={saveNow} disabled={pending} className="btn-primary disabled:opacity-60">
               {pending ? "Saving…" : "Save now"}
             </button>
           </div>
@@ -161,7 +148,7 @@ export function DcasForm({
         <Link href={`/property/${propertyId}`} className="btn-ghost">
           Back to overview
         </Link>
-        <button onClick={save} disabled={pending} className="btn-primary disabled:opacity-60">
+        <button onClick={saveNow} disabled={pending} className="btn-primary disabled:opacity-60">
           {pending ? "Saving…" : "Save now"}
         </button>
       </div>

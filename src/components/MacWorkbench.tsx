@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState } from "react";
 import type { Mac, MacComp, MacSegment } from "@/lib/types";
 import { MAC_OPTIONS, emptyComp, emptySegment, segmentStats, pricePerM2, daysOnMarket } from "@/lib/macCalc";
 import { actionSaveMac } from "@/app/actions";
@@ -13,11 +13,10 @@ const TYPE_FILTERS = ["Flats/Apartments", "Houses", "Bungalows", "Any"];
 
 export function MacWorkbench({ propertyId, initial }: { propertyId: string; initial: Mac }) {
   const [mac, setMac] = useState<Mac>(initial);
-  const [pending, startTransition] = useTransition();
-  const [savedAt, setSavedAt] = useState<string | null>(null);
-  const [dirty, setDirty] = useState(false);
+  const { status, savedAt, dirty, saveNow } = useAutosave(mac, (v) => actionSaveMac(propertyId, v));
+  const pending = status === "saving";
 
-  const touch = () => setDirty(true);
+  const touch = () => {}; // edits are picked up by autosave via state change
 
   function patchMeta(patch: Partial<Mac>) {
     setMac((m) => ({ ...m, ...patch }));
@@ -64,16 +63,6 @@ export function MacWorkbench({ propertyId, initial }: { propertyId: string; init
     touch();
   }
 
-  function save() {
-    startTransition(async () => {
-      await actionSaveMac(propertyId, mac);
-      setSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-      setDirty(false);
-    });
-  }
-
-  useAutosave({ data: mac, dirty, save, persist: () => void actionSaveMac(propertyId, mac) });
-
   return (
     <div className="space-y-6">
       {/* Sticky bar */}
@@ -93,7 +82,7 @@ export function MacWorkbench({ propertyId, initial }: { propertyId: string; init
           </div>
           <div className="flex items-center gap-2">
             <Link href={`/property/${propertyId}/mac/print`} className="btn-ghost">PDF / Print</Link>
-            <button onClick={save} disabled={pending} className="btn-primary disabled:opacity-60">
+            <button onClick={saveNow} disabled={pending} className="btn-primary disabled:opacity-60">
               {pending ? "Saving…" : "Save now"}
             </button>
           </div>
@@ -136,7 +125,7 @@ export function MacWorkbench({ propertyId, initial }: { propertyId: string; init
         <button onClick={addSegment} className="btn-ghost">+ Add segment</button>
         <div className="flex gap-2">
           <Link href={`/property/${propertyId}`} className="btn-ghost">Back to overview</Link>
-          <button onClick={save} disabled={pending} className="btn-primary disabled:opacity-60">
+          <button onClick={saveNow} disabled={pending} className="btn-primary disabled:opacity-60">
             {pending ? "Saving…" : "Save now"}
           </button>
         </div>

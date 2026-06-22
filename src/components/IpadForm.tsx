@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState } from "react";
 import type { Ipad, IpadInputs, IpadUnit } from "@/lib/types";
 import { computeIpad, sqmToSqft } from "@/lib/ipadCalc";
 import { actionSaveIpad } from "@/app/actions";
@@ -76,15 +76,13 @@ const DEV_FINANCE: FieldDef[] = [
 
 export function IpadForm({ propertyId, initial }: { propertyId: string; initial: Ipad }) {
   const [inp, setInp] = useState<IpadInputs>(initial.inputs);
-  const [pending, startTransition] = useTransition();
-  const [savedAt, setSavedAt] = useState<string | null>(null);
-  const [dirty, setDirty] = useState(false);
+  const { status, savedAt, dirty, saveNow } = useAutosave(inp, (v) => actionSaveIpad(propertyId, { inputs: v }));
+  const pending = status === "saving";
 
   const out = useMemo(() => computeIpad(inp), [inp]);
 
   function set<K extends keyof IpadInputs>(key: K, value: IpadInputs[K]) {
     setInp((s) => ({ ...s, [key]: value }));
-    setDirty(true);
   }
   // Set a fixed £ override for a percentage fee (null clears it → back to %).
   function setOverride(key: string, value: number | null) {
@@ -94,30 +92,16 @@ export function IpadForm({ propertyId, initial }: { propertyId: string; initial:
       else overrides[key] = value;
       return { ...s, overrides };
     });
-    setDirty(true);
   }
   function setUnit(id: string, patch: Partial<IpadUnit>) {
     setInp((s) => ({ ...s, units: s.units.map((u) => (u.id === id ? { ...u, ...patch } : u)) }));
-    setDirty(true);
   }
   function addUnit() {
     setInp((s) => ({ ...s, units: [...s.units, { id: `u${Date.now()}`, units: 1, m2: 0, type: "", totalGdv: 0 }] }));
-    setDirty(true);
   }
   function removeUnit(id: string) {
     setInp((s) => ({ ...s, units: s.units.filter((u) => u.id !== id) }));
-    setDirty(true);
   }
-
-  function save() {
-    startTransition(async () => {
-      await actionSaveIpad(propertyId, { inputs: inp });
-      setSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-      setDirty(false);
-    });
-  }
-
-  useAutosave({ data: inp, dirty, save, persist: () => void actionSaveIpad(propertyId, { inputs: inp }) });
 
   const profitColor = out.profitOnGdvPct >= 0.18 ? "#2E7D5B" : out.profitOnGdvPct >= 0 ? "#C2872B" : "#B23A48";
 
@@ -142,7 +126,7 @@ export function IpadForm({ propertyId, initial }: { propertyId: string; initial:
           </div>
           <div className="flex items-center gap-2">
             <Link href={`/property/${propertyId}/ipad/print`} className="btn-ghost">PDF / Print</Link>
-            <button onClick={save} disabled={pending} className="btn-primary disabled:opacity-60">
+            <button onClick={saveNow} disabled={pending} className="btn-primary disabled:opacity-60">
               {pending ? "Saving…" : "Save now"}
             </button>
           </div>
@@ -264,7 +248,7 @@ export function IpadForm({ propertyId, initial }: { propertyId: string; initial:
           </section>
           <div className="mt-3 flex gap-2">
             <Link href={`/property/${propertyId}`} className="btn-ghost flex-1">Overview</Link>
-            <button onClick={save} disabled={pending} className="btn-primary flex-1 disabled:opacity-60">
+            <button onClick={saveNow} disabled={pending} className="btn-primary flex-1 disabled:opacity-60">
               {pending ? "Saving…" : "Save now"}
             </button>
           </div>
