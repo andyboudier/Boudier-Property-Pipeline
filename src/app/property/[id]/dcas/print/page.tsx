@@ -31,8 +31,9 @@ export default async function DcasPrintPage({ params }: { params: { id: string }
         {/* Letterhead */}
         <header className="flex items-start justify-between border-b-2 border-ink pb-4">
           <div>
-            <div className="wordmark font-serif text-lg font-semibold text-ink">BOUDIER PROPERTY</div>
-            <div className="text-[11px] uppercase tracking-[0.25em] text-bronze-dark">Intelligent Development, Lasting Value</div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/boudier-logo.png" alt="Boudier Property" className="h-9 w-auto rounded" />
+            <div className="mt-1 text-[11px] uppercase tracking-[0.25em] text-bronze-dark">Intelligent Development, Lasting Value</div>
           </div>
           <div className="text-right text-xs text-ink-muted">
             <div className="font-semibold text-ink">Deal Criteria Assessment Sheet</div>

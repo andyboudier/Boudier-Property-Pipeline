@@ -21,7 +21,7 @@ const PAPER = "#F6F5F0";
 const CREAM = "#F5E8D4";
 const MUTED = "#6B7280";
 const LINE = "#E4E0D8";
-const LOGO = "https://boudierproperty.co.uk/wp-content/uploads/2026/05/logo.png";
+const LOGO = "/boudier-logo.png";
 
 const serif = { fontFamily: "var(--pres-serif)" };
 
@@ -55,7 +55,7 @@ export default async function PresentationPage({ params }: { params: { id: strin
         <section className="pres-page" style={{ background: INK, color: "#fff" }}>
           <div style={{ padding: "40px 44px", display: "flex", flexDirection: "column", minHeight: "1000px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <img src={LOGO} alt="Boudier Property" style={{ height: 56, objectFit: "contain" }} />
+              <img src={LOGO} alt="Boudier Property" style={{ height: 56, objectFit: "contain", borderRadius: 8 }} />
               <span style={{ fontSize: 11, letterSpacing: "0.28em", textTransform: "uppercase", color: GOLD }}>Investment Opportunity</span>
             </div>
 
@@ -179,7 +179,7 @@ export default async function PresentationPage({ params }: { params: { id: strin
             or an offer of securities. Figures are projections based on current assumptions and may change. Capital is at risk.
           </p>
           <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: `1px solid ${LINE}`, paddingTop: 12 }}>
-            <img src={LOGO} alt="Boudier Property" style={{ height: 30, objectFit: "contain" }} />
+            <img src={LOGO} alt="Boudier Property" style={{ height: 30, objectFit: "contain", borderRadius: 6 }} />
             <span style={{ fontSize: 10, color: MUTED }}>Intelligent Development, Lasting Value</span>
           </div>
         </section>
