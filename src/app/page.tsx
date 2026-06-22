@@ -42,6 +42,7 @@ export default async function HomePage() {
     proceedable: rows.filter((r) => r.status === "proceedable").length,
     review: rows.filter((r) => r.status === "review").length,
     notProceedable: rows.filter((r) => r.status === "not-proceedable").length,
+    sold: rows.filter((r) => r.status === "sold").length,
   };
 
   return (
@@ -61,11 +62,12 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <Stat label="Sites" value={counts.total} color="#16202B" />
         <Stat label="Proceedable" value={counts.proceedable} color="#2E7D5B" />
         <Stat label="Review" value={counts.review} color="#C2872B" />
         <Stat label="Not proceedable" value={counts.notProceedable} color="#B23A48" />
+        <Stat label="Sold" value={counts.sold} color="#4F6D7A" />
       </section>
 
       <SearchTable rows={rows} />

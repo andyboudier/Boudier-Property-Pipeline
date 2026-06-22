@@ -180,6 +180,7 @@ export type ProcedabilityStatus =
   | "proceedable"
   | "review"
   | "not-proceedable"
+  | "sold"
   | "incomplete";
 
 export interface ProcedabilityCheck {

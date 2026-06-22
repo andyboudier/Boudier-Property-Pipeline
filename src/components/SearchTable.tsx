@@ -36,6 +36,7 @@ const FILTERS: { key: ProcedabilityStatus | "all"; label: string }[] = [
   { key: "proceedable", label: "Proceedable" },
   { key: "review", label: "Review" },
   { key: "not-proceedable", label: "Not proceedable" },
+  { key: "sold", label: "Sold" },
   { key: "incomplete", label: "Incomplete" },
 ];
 
@@ -157,7 +158,7 @@ export function SearchTable({ rows }: { rows: Row[] }) {
   );
 }
 
-const STATUS_OPTIONS: ProcedabilityStatus[] = ["proceedable", "review", "not-proceedable", "incomplete"];
+const STATUS_OPTIONS: ProcedabilityStatus[] = ["proceedable", "review", "not-proceedable", "sold", "incomplete"];
 
 function StatusSelect({ id, value, autoStatus, overridden }: { id: string; value: ProcedabilityStatus; autoStatus: ProcedabilityStatus; overridden?: boolean }) {
   const router = useRouter();

@@ -187,6 +187,13 @@ export function evaluateProcedability(
     headline = "Clears the criteria — proceedable.";
   }
 
+  // Listing shows as Sold — surface it as Sold so it stays on the radar in case
+  // the sale falls through and it returns to the market.
+  if (p.marketStatus === "Sold") {
+    status = "sold";
+    headline = "Listing shows as Sold — monitoring in case the sale falls through.";
+  }
+
   // convenience 0–100 score
   const scored = checks.filter((c) => c.outcome !== "na");
   const weight = (o: ProcedabilityCheck["outcome"]) => (o === "pass" ? 1 : o === "warn" ? 0.5 : 0);
@@ -203,6 +210,8 @@ export function statusMeta(status: ProcedabilityResult["status"]) {
       return { label: "Review", color: "#C2872B", token: "review" as const };
     case "not-proceedable":
       return { label: "Not Proceedable", color: "#B23A48", token: "stop" as const };
+    case "sold":
+      return { label: "Sold", color: "#4F6D7A", token: "sold" as const };
     default:
       return { label: "Incomplete", color: "#8A8F94", token: "idle" as const };
   }
