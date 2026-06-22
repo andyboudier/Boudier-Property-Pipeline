@@ -99,6 +99,14 @@ export function IpadForm({ propertyId, initial }: { propertyId: string; initial:
   function addUnit() {
     setInp((s) => ({ ...s, units: [...s.units, { id: `u${Date.now()}`, units: 1, m2: 0, type: "", totalGdv: 0 }] }));
   }
+  // Duplicate the last unit line (copy its values into a new row).
+  function duplicateLastUnit() {
+    setInp((s) => {
+      const last = s.units[s.units.length - 1];
+      const copy = last ? { ...last, id: `u${Date.now()}` } : { id: `u${Date.now()}`, units: 1, m2: 0, type: "", totalGdv: 0 };
+      return { ...s, units: [...s.units, copy] };
+    });
+  }
   function removeUnit(id: string) {
     setInp((s) => ({ ...s, units: s.units.filter((u) => u.id !== id) }));
   }
@@ -199,7 +207,10 @@ export function IpadForm({ propertyId, initial }: { propertyId: string; initial:
                 </tbody>
               </table>
             </div>
-            <button onClick={addUnit} className="btn-ghost mt-2">+ Add unit line</button>
+            <div className="mt-2 flex gap-2">
+              <button onClick={addUnit} className="btn-ghost">+ Add unit line</button>
+              <button onClick={duplicateLastUnit} disabled={!inp.units.length} className="btn-ghost disabled:opacity-50">Copy last line</button>
+            </div>
           </section>
 
           <Group title="Purchase costs & fees" fields={PURCHASE} inp={inp} set={set} setOverride={setOverride} feeAmounts={out.feeAmounts} />
