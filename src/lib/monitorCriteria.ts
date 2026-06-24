@@ -29,6 +29,10 @@ const COUNTY_OUTCODES: Record<string, string[]> = {
   wiltshire: ["SN", "SP", "BA"],
   surrey: ["GU", "KT", "RH", "CR", "SM", "TW"],
   oxfordshire: ["OX"],
+  "east sussex": ["BN", "TN"],
+  "west sussex": ["RH", "BN", "PO"],
+  "brighton and hove": ["BN"],
+  "brighton & hove": ["BN"],
 };
 
 const TYPE_KEYWORDS: Record<string, RegExp> = {
