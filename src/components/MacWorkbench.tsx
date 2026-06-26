@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import type { Mac, MacComp, MacSegment } from "@/lib/types";
-import { MAC_OPTIONS, emptyComp, emptySegment, segmentStats, pricePerM2, daysOnMarket } from "@/lib/macCalc";
+import type { Mac, MacComp, MacSegment, MacSearchParams, MacSearchFilters } from "@/lib/types";
+import { MAC_OPTIONS, MAC_RADIUS_OPTIONS, MAC_PROPERTY_TYPES, DEFAULT_SEARCH, emptyComp, emptySegment, segmentStats, pricePerM2, daysOnMarket } from "@/lib/macCalc";
 import { actionSaveMac } from "@/app/actions";
 import { gbp, num } from "@/lib/format";
 import { useAutosave } from "@/lib/useAutosave";
@@ -11,6 +11,14 @@ import { MacSummaryView } from "./MacSummaryView";
 
 const RADIUS_OPTS = ["Exact Area Only", "Within 1/4 mile", "Within 1/2 mile", "Within 1 mile", "Within 3 miles"];
 const TYPE_FILTERS = ["Flats/Apartments", "Houses", "Bungalows", "Any"];
+const FILTER_ROWS: [keyof MacSearchFilters, string][] = [
+  ["garden", "Garden"],
+  ["parking", "Parking"],
+  ["newHome", "New Home"],
+  ["retirementHomes", "Retirement Homes"],
+  ["shared", "Shared"],
+  ["auction", "Auction"],
+];
 
 export function MacWorkbench({ propertyId, initial }: { propertyId: string; initial: Mac }) {
   const [mac, setMac] = useState<Mac>(initial);
@@ -23,6 +31,16 @@ export function MacWorkbench({ propertyId, initial }: { propertyId: string; init
   function patchMeta(patch: Partial<Mac>) {
     setMac((m) => ({ ...m, ...patch }));
     touch();
+  }
+  const search = mac.search ?? DEFAULT_SEARCH;
+  function patchSearch(patch: Partial<MacSearchParams>) {
+    setMac((m) => ({ ...m, search: { ...DEFAULT_SEARCH, ...m.search, ...patch } }));
+  }
+  function patchFilter(key: keyof MacSearchFilters, value: boolean) {
+    setMac((m) => ({
+      ...m,
+      search: { ...DEFAULT_SEARCH, ...m.search, filters: { ...DEFAULT_SEARCH.filters, ...m.search?.filters, [key]: value } },
+    }));
   }
   function patchSegment(key: string, patch: Partial<MacSegment>) {
     setMac((m) => ({ ...m, segments: m.segments.map((s) => (s.key === key ? { ...s, ...patch } : s)) }));
@@ -106,6 +124,65 @@ export function MacWorkbench({ propertyId, initial }: { propertyId: string; init
           <div>
             <label className="label">Description</label>
             <input className="field" value={mac.description} onChange={(e) => patchMeta({ description: e.target.value })} />
+          </div>
+        </div>
+      </section>
+
+      {/* Market search parameters */}
+      <section className="card overflow-hidden">
+        <h2 className="border-b border-paper-line bg-paper-warm/70 px-5 py-2.5 text-center font-serif text-lg text-ink">
+          Market Search Parameters
+        </h2>
+        <div className="grid gap-x-8 gap-y-4 p-5 lg:grid-cols-[1.7fr,1fr]">
+          {/* Left — search fields */}
+          <div className="space-y-2.5">
+            <ParamRow label="Search Area">
+              <input className="field-sm w-full" value={search.searchArea} onChange={(e) => patchSearch({ searchArea: e.target.value })} />
+            </ParamRow>
+            <ParamRow label="Radius">
+              <select className="field-sm w-full" value={search.radius} onChange={(e) => patchSearch({ radius: e.target.value })}>
+                {MAC_RADIUS_OPTIONS.map((o) => <option key={o}>{o}</option>)}
+              </select>
+            </ParamRow>
+            <div className="grid gap-x-8 gap-y-2.5 sm:grid-cols-2">
+              <ParamRow label="Price Range (Minimum)">
+                <input type="number" placeholder="Min Price" className="field-sm w-full" value={search.minPrice ?? ""} onChange={(e) => patchSearch({ minPrice: toNum(e.target.value) })} />
+              </ParamRow>
+              <ParamRow label="No. of Properties inc Sold STC">
+                <input type="number" className="field-sm w-full" value={search.totalIncSstc ?? ""} onChange={(e) => patchSearch({ totalIncSstc: toNum(e.target.value) })} />
+              </ParamRow>
+              <ParamRow label="Price Range (Maximum)">
+                <input type="number" placeholder="Max Price" className="field-sm w-full" value={search.maxPrice ?? ""} onChange={(e) => patchSearch({ maxPrice: toNum(e.target.value) })} />
+              </ParamRow>
+              <ParamRow label="No. of Properties exc Sold STC">
+                <input type="number" className="field-sm w-full" value={search.totalExcSstc ?? ""} onChange={(e) => patchSearch({ totalExcSstc: toNum(e.target.value) })} />
+              </ParamRow>
+              <ParamRow label="No. of Bedrooms (Minimum)">
+                <input type="number" className="field-sm w-full" value={search.minBeds ?? ""} onChange={(e) => patchSearch({ minBeds: toNum(e.target.value) })} />
+              </ParamRow>
+              <ParamRow label="No. of Bedrooms (Maximum)">
+                <input type="number" className="field-sm w-full" value={search.maxBeds ?? ""} onChange={(e) => patchSearch({ maxBeds: toNum(e.target.value) })} />
+              </ParamRow>
+            </div>
+            <ParamRow label="Type of Property">
+              <select className="field-sm w-full" value={search.propertyType} onChange={(e) => patchSearch({ propertyType: e.target.value })}>
+                {MAC_PROPERTY_TYPES.map((o) => <option key={o}>{o}</option>)}
+              </select>
+            </ParamRow>
+          </div>
+
+          {/* Right — filters */}
+          <div className="sm:max-w-xs">
+            <div className="mb-1 flex items-center justify-between border-b border-paper-line pb-1 text-sm font-semibold text-ink">
+              <span>Filters</span>
+              <span>On?</span>
+            </div>
+            {FILTER_ROWS.map(([key, label]) => (
+              <div key={key} className="flex items-center justify-between border-b border-paper-line/60 py-1.5 text-sm">
+                <span className="text-ink-soft">{label}</span>
+                <YesNo value={search.filters[key]} onChange={(v) => patchFilter(key, v)} />
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -297,6 +374,32 @@ function SegmentBlock({
         />
       </div>
     </section>
+  );
+}
+
+function ParamRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="w-40 shrink-0 text-right text-xs font-medium text-ink-muted sm:text-sm">{label}:</span>
+      <div className="min-w-0 flex-1">{children}</div>
+    </div>
+  );
+}
+
+function YesNo({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!value)}
+      className="rounded-md border px-3 py-0.5 text-xs font-semibold transition"
+      style={{
+        borderColor: value ? "#2E7D5B" : "#E7E4DE",
+        background: value ? "#2E7D5B14" : "#fff",
+        color: value ? "#2E7D5B" : "#8A8F94",
+      }}
+    >
+      {value ? "Yes" : "No"}
+    </button>
   );
 }
 

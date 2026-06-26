@@ -64,10 +64,34 @@ export interface MacSegment {
   comps: MacComp[];
 }
 
+export interface MacSearchFilters {
+  garden: boolean;
+  parking: boolean;
+  newHome: boolean;
+  retirementHomes: boolean;
+  shared: boolean;
+  auction: boolean;
+}
+
+// Top-level market search parameters (mirrors the portal search settings).
+export interface MacSearchParams {
+  searchArea: string;
+  radius: string;
+  minPrice: number | null;
+  maxPrice: number | null;
+  totalIncSstc: number | null; // No. of properties inc. Sold STC
+  totalExcSstc: number | null; // No. of properties exc. Sold STC
+  minBeds: number | null;
+  maxBeds: number | null;
+  propertyType: string;
+  filters: MacSearchFilters;
+}
+
 export interface Mac {
   projectName: string;
   description: string;
   date: string;
+  search?: MacSearchParams;
   segments: MacSegment[];
   updatedAt?: string;
 }

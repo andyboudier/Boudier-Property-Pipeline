@@ -1,4 +1,20 @@
-import type { Mac, MacComp, MacSegment } from "./types";
+import type { Mac, MacComp, MacSegment, MacSearchParams } from "./types";
+
+export const MAC_RADIUS_OPTIONS = ["Exact Area Only", "Within 1/4 mile", "Within 1/2 mile", "Within 1 mile", "Within 3 miles", "Within 5 miles"];
+export const MAC_PROPERTY_TYPES = ["Flats/Apartments", "Houses", "Bungalows", "Land", "Commercial Property", "Other", "Any"];
+
+export const DEFAULT_SEARCH: MacSearchParams = {
+  searchArea: "",
+  radius: "Exact Area Only",
+  minPrice: null,
+  maxPrice: null,
+  totalIncSstc: null,
+  totalExcSstc: null,
+  minBeds: 2,
+  maxBeds: 2,
+  propertyType: "Flats/Apartments",
+  filters: { garden: false, parking: false, newHome: false, retirementHomes: true, shared: true, auction: false },
+};
 
 // Dropdown options sourced from the MAC "Drivers" sheet.
 export const MAC_OPTIONS = {
@@ -74,6 +90,7 @@ export function emptyMac(projectName = "", description = ""): Mac {
     projectName,
     description,
     date: new Date().toISOString().slice(0, 10),
+    search: { ...DEFAULT_SEARCH, filters: { ...DEFAULT_SEARCH.filters } },
     segments: [emptySegment("1-bed", "1 Bed Flats", 1, 1), emptySegment("2-bed", "2 Bed Flats", 2, 2)],
   };
 }
