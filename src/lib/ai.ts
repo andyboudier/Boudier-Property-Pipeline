@@ -111,6 +111,12 @@ const CARD_TOOL = {
       mobile: { type: "string", description: "Mobile / cell number" },
       website: { type: "string", description: "Website URL" },
       address: { type: "string", description: "Postal address (single line)" },
+      cardBox: {
+        type: ["array", "null"],
+        items: { type: "number" },
+        description:
+          "Bounding box of the business card within the image as [left, top, width, height], each a fraction 0-1 of the image size. Null if the whole image is the card.",
+      },
     },
     required: ["name"],
   },
@@ -126,6 +132,7 @@ export interface CardFields {
   mobile: string;
   website: string;
   address: string;
+  cardBox: number[] | null; // [left, top, width, height] fractions, or null
 }
 
 /** Read a business card from a base64 image (data URL or raw base64). */
@@ -147,7 +154,10 @@ export async function extractContactCard(imageDataUrl: string): Promise<CardFiel
         role: "user",
         content: [
           { type: "image", source: { type: "base64", media_type: mediaType, data } },
-          { type: "text", text: "Read this business card and record the contact's details. Keep phone numbers as printed." },
+          {
+            type: "text",
+            text: "Read this business card and record the contact's details. Keep phone numbers as printed. Also give cardBox — the card's bounding box in the image as [left, top, width, height] fractions (0-1).",
+          },
         ],
       },
     ],
@@ -157,6 +167,7 @@ export async function extractContactCard(imageDataUrl: string): Promise<CardFiel
   if (!block || block.type !== "tool_use") return null;
   const d = block.input as Record<string, unknown>;
   const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  const box = Array.isArray(d.cardBox) && d.cardBox.length === 4 && d.cardBox.every((n) => typeof n === "number") ? (d.cardBox as number[]) : null;
   return {
     name: str(d.name),
     jobTitle: str(d.jobTitle),
@@ -167,5 +178,6 @@ export async function extractContactCard(imageDataUrl: string): Promise<CardFiel
     mobile: str(d.mobile),
     website: str(d.website),
     address: str(d.address),
+    cardBox: box,
   };
 }

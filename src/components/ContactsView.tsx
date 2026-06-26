@@ -55,14 +55,25 @@ export function ContactsView({ initialContacts }: { initialContacts: Contact[] }
     return m;
   }, [initialContacts]);
 
-  // Read a card image (already cropped/compressed) and open the prefilled modal.
-  async function scanImage(dataUrl: string) {
+  // Read a card image and open the prefilled modal. `autoCrop` crops the stored
+  // image to the card the AI detected (for full-frame photos / uploads); the
+  // in-app camera already crops to its frame, so it passes false.
+  async function scanImage(dataUrl: string, autoCrop: boolean) {
     setMsg(null);
     setScanning(true);
     try {
       const res = await actionScanCard(dataUrl);
       if (res.ok) {
-        setEditing({ ...res.fields, notes: "", cardImageUrl: dataUrl });
+        const { cardBox, ...fields } = res.fields;
+        let cardImageUrl = dataUrl;
+        if (autoCrop && cardBox) {
+          try {
+            cardImageUrl = await cropToBox(dataUrl, cardBox);
+          } catch {
+            /* keep full image */
+          }
+        }
+        setEditing({ ...fields, notes: "", cardImageUrl });
       } else {
         setMsg(res.error || "Couldn't read that card.");
         setEditing({ cardImageUrl: dataUrl }); // let them fill it in manually
@@ -79,7 +90,7 @@ export function ContactsView({ initialContacts }: { initialContacts: Contact[] }
     e.target.value = ""; // allow re-selecting the same file
     if (!file) return;
     try {
-      await scanImage(await compressImage(file));
+      await scanImage(await compressImage(file), true);
     } catch {
       setMsg("Couldn't process that image.");
     }
@@ -136,7 +147,7 @@ export function ContactsView({ initialContacts }: { initialContacts: Contact[] }
           onClose={closeCamera}
           onCapture={(dataUrl) => {
             closeCamera();
-            void scanImage(dataUrl);
+            void scanImage(dataUrl, false); // already cropped to the frame
           }}
         />
       )}
@@ -207,7 +218,7 @@ function ContactCard({ c, onEdit }: { c: Contact; onEdit: () => void }) {
       </div>
       {c.notes && <p className="mt-2 line-clamp-3 text-xs text-ink-muted">{c.notes}</p>}
       {c.cardImageUrl && (
-        <img src={c.cardImageUrl} alt="Business card" className="mt-2 max-h-16 w-auto rounded border border-paper-line" />
+        <img src={c.cardImageUrl} alt="Business card" className="mt-2 h-16 w-auto max-w-full self-start rounded border border-paper-line object-contain" />
       )}
       <div className="mt-auto pt-3 text-right">
         <button onClick={onEdit} className="text-xs text-ink-muted hover:text-bronze-dark">Edit</button>
@@ -246,7 +257,7 @@ function ContactModal({ draft, categories, onClose, onSaved }: { draft: Draft; c
           <button onClick={onClose} className="rounded px-2 py-1 text-paper/80 hover:bg-white/10">✕</button>
         </div>
         <div className="space-y-3 p-5">
-          {c.cardImageUrl && <img src={c.cardImageUrl} alt="Business card" className="max-h-32 rounded-md border border-paper-line" />}
+          {c.cardImageUrl && <img src={c.cardImageUrl} alt="Business card" className="max-h-40 w-auto max-w-full rounded-md border border-paper-line object-contain" />}
           <Field label="Name" value={c.name} onChange={(v) => set("name", v)} />
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Job title" value={c.jobTitle} onChange={(v) => set("jobTitle", v)} />
@@ -300,6 +311,42 @@ function Field({ label, value, onChange, type = "text" }: { label: string; value
 
 function withHttp(url: string) {
   return /^https?:\/\//i.test(url) ? url : `https://${url}`;
+}
+
+function loadImg(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((res, rej) => {
+    const i = new Image();
+    i.onload = () => res(i);
+    i.onerror = () => rej(new Error("decode failed"));
+    i.src = dataUrl;
+  });
+}
+
+// Crop an image to a [left, top, width, height] fractional box (the card the AI
+// detected), with a little padding. Falls back to the original if implausible.
+async function cropToBox(dataUrl: string, box: number[]): Promise<string> {
+  const [x, y, w, h] = box;
+  if (!(w > 0.15 && h > 0.1)) return dataUrl; // box too small to trust
+  const img = await loadImg(dataUrl);
+  const pad = 0.03;
+  const clamp = (v: number) => Math.max(0, Math.min(1, v));
+  const L = clamp(x - pad);
+  const T = clamp(y - pad);
+  const R = clamp(x + w + pad);
+  const B = clamp(y + h + pad);
+  const sx = L * img.width;
+  const sy = T * img.height;
+  const sw = (R - L) * img.width;
+  const sh = (B - T) * img.height;
+  if (sw < 20 || sh < 20) return dataUrl;
+  const scale = Math.min(1, 1400 / sw);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(sw * scale);
+  canvas.height = Math.round(sh * scale);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return dataUrl;
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.85);
 }
 
 // Compress an image file to a small JPEG data URL (kept under Firestore/action limits).
