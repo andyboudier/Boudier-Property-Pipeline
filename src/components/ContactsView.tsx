@@ -100,12 +100,23 @@ export function ContactsView({ initialContacts }: { initialContacts: Contact[] }
     <div className="space-y-5">
       {/* Toolbar */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <input
-          className="field sm:max-w-sm"
-          placeholder="Search name, company, email, phone…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
+        <div className="relative sm:max-w-sm sm:flex-1">
+          <input
+            className="field w-full pr-8"
+            placeholder="Search name, company, email, phone…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          {query && (
+            <button
+              onClick={() => setQuery("")}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink"
+            >
+              ✕
+            </button>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onPickFile} />
           <input ref={nativeRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onPickFile} />
@@ -127,6 +138,14 @@ export function ContactsView({ initialContacts }: { initialContacts: Contact[] }
             <Chip key={c} label={`${c} (${counts[c]})`} active={cat === c} onClick={() => setCat(cat === c ? null : c)} />
           ))}
       </div>
+
+      {(query || cat) && (
+        <p className="text-xs text-ink-muted">
+          Showing {filtered.length} of {initialContacts.length} contact{initialContacts.length === 1 ? "" : "s"}
+          {query && <> matching “{query}”</>}
+          {cat && <> in {cat}</>}
+        </p>
+      )}
 
       {/* List */}
       {filtered.length === 0 ? (
