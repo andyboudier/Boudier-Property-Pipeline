@@ -90,3 +90,82 @@ export async function extractWithAI(content: string, sourceHint?: string): Promi
     marketStatus: str(d.marketStatus),
   };
 }
+
+// ── Business-card extraction (vision) ────────────────────────────────────────
+const CARD_TOOL = {
+  name: "record_contact",
+  description: "Record the contact details read from a business card image.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      name: { type: "string", description: "Person's full name" },
+      jobTitle: { type: "string", description: "Job title / role" },
+      company: { type: "string", description: "Company / organisation name" },
+      category: {
+        type: "string",
+        description:
+          "Best-fit profession category, e.g. Architect, Estate Agent, Commercial Agent, Accountant, Solicitor, Planning Consultant, Surveyor, Structural Engineer, Contractor / Builder, Lender / Broker, Investor, Coach. Leave blank if unclear.",
+      },
+      email: { type: "string", description: "Email address" },
+      phone: { type: "string", description: "Main / office phone number" },
+      mobile: { type: "string", description: "Mobile / cell number" },
+      website: { type: "string", description: "Website URL" },
+      address: { type: "string", description: "Postal address (single line)" },
+    },
+    required: ["name"],
+  },
+};
+
+export interface CardFields {
+  name: string;
+  jobTitle: string;
+  company: string;
+  category: string;
+  email: string;
+  phone: string;
+  mobile: string;
+  website: string;
+  address: string;
+}
+
+/** Read a business card from a base64 image (data URL or raw base64). */
+export async function extractContactCard(imageDataUrl: string): Promise<CardFields | null> {
+  if (!isAIConfigured() || !imageDataUrl) return null;
+  const m = imageDataUrl.match(/^data:(image\/[a-z]+);base64,(.*)$/i);
+  const mediaType = (m?.[1] || "image/jpeg") as "image/jpeg" | "image/png" | "image/webp" | "image/gif";
+  const data = m?.[2] || imageDataUrl;
+
+  const Anthropic = (await import("@anthropic-ai/sdk")).default;
+  const client = new Anthropic();
+  const msg = await client.messages.create({
+    model: MODEL,
+    max_tokens: 1024,
+    tools: [CARD_TOOL],
+    tool_choice: { type: "tool", name: "record_contact" },
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "image", source: { type: "base64", media_type: mediaType, data } },
+          { type: "text", text: "Read this business card and record the contact's details. Keep phone numbers as printed." },
+        ],
+      },
+    ],
+  });
+
+  const block = msg.content.find((b) => b.type === "tool_use");
+  if (!block || block.type !== "tool_use") return null;
+  const d = block.input as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  return {
+    name: str(d.name),
+    jobTitle: str(d.jobTitle),
+    company: str(d.company),
+    category: str(d.category),
+    email: str(d.email),
+    phone: str(d.phone),
+    mobile: str(d.mobile),
+    website: str(d.website),
+    address: str(d.address),
+  };
+}

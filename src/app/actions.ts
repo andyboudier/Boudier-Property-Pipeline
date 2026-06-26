@@ -24,8 +24,12 @@ import {
   deleteWatch,
   saveMonitorCriteria,
   addIgnoredUrl,
+  listContacts,
+  addContact,
+  updateContact,
+  deleteContact,
 } from "@/lib/db";
-import type { MonitorCriteria } from "@/lib/types";
+import type { MonitorCriteria, Contact } from "@/lib/types";
 
 export async function actionSaveDcas(id: string, dcas: Dcas) {
   await saveDcas(id, dcas);
@@ -276,4 +280,47 @@ export async function actionClearPropertyAlert(id: string) {
 export async function actionImportListing(input: { url?: string; html?: string }) {
   const { importListing } = await import("@/lib/importListing");
   return importListing(input);
+}
+
+// ── Contacts ──────────────────────────────────────────────────────────────────
+const EMPTY_CONTACT: Omit<Contact, "id" | "createdAt"> = {
+  name: "", company: "", jobTitle: "", category: "", email: "", phone: "",
+  mobile: "", website: "", address: "", notes: "", cardImageUrl: "",
+};
+
+export async function actionListContacts() {
+  return listContacts();
+}
+
+export async function actionAddContact(input: Partial<Contact>) {
+  const c = { ...EMPTY_CONTACT, ...input, name: (input.name || "").trim() || "Unnamed contact", createdAt: new Date().toISOString() };
+  const id = await addContact(c);
+  revalidatePath(`/contacts`);
+  return { ok: true, id };
+}
+
+export async function actionUpdateContact(id: string, patch: Partial<Contact>) {
+  await updateContact(id, patch);
+  revalidatePath(`/contacts`);
+  return { ok: true };
+}
+
+export async function actionDeleteContact(id: string) {
+  await deleteContact(id);
+  revalidatePath(`/contacts`);
+  return { ok: true };
+}
+
+// Read a business card image (data URL) and return the extracted fields.
+export async function actionScanCard(imageDataUrl: string) {
+  const { extractContactCard, isAIConfigured } = await import("@/lib/ai");
+  if (!isAIConfigured()) return { ok: false as const, error: "AI key not configured." };
+  try {
+    const fields = await extractContactCard(imageDataUrl);
+    if (!fields) return { ok: false as const, error: "Couldn't read the card. Try a clearer photo." };
+    return { ok: true as const, fields };
+  } catch (e) {
+    console.error("Card scan failed:", e);
+    return { ok: false as const, error: "Card scan failed. Try again or enter the details manually." };
+  }
 }

@@ -1,5 +1,5 @@
 import "server-only";
-import type { Property, ProcedabilitySettings, Dcas, Mac, Ipad, PropertySnapshot, Lead, WatchSource, MonitorCriteria, WatchResult } from "./types";
+import type { Property, ProcedabilitySettings, Dcas, Mac, Ipad, PropertySnapshot, Lead, WatchSource, MonitorCriteria, WatchResult, Contact } from "./types";
 import { getDb, isFirestoreConfigured } from "./firebaseAdmin";
 import { SEED_PROPERTIES } from "./seedData";
 import { DEFAULT_SETTINGS } from "./procedability";
@@ -22,6 +22,7 @@ const g = globalThis as unknown as {
   __boudierWatch?: WatchSource[];
   __boudierCriteria?: MonitorCriteria;
   __boudierIgnored?: IgnoredUrl[];
+  __boudierContacts?: Contact[];
 };
 function memStore(): Map<string, Property> {
   if (!g.__boudierStore) {
@@ -269,6 +270,50 @@ export async function ignoredUrlSet(): Promise<Set<string>> {
   if (!db) return new Set(memIgnored().map((i) => i.url));
   const snap = await db.collection(IGNORED).limit(2000).get();
   return new Set(snap.docs.map((d) => (d.data() as IgnoredUrl).url).filter(Boolean));
+}
+
+// ── Contacts (address book) ───────────────────────────────────────────────────
+const CONTACTS = "contacts";
+function memContacts(): Contact[] {
+  if (!g.__boudierContacts) g.__boudierContacts = [];
+  return g.__boudierContacts;
+}
+export async function listContacts(): Promise<Contact[]> {
+  const db = getDb();
+  if (!db) return [...memContacts()].sort((a, b) => a.name.localeCompare(b.name));
+  const snap = await db.collection(CONTACTS).limit(2000).get();
+  return snap.docs
+    .map((d) => ({ id: d.id, ...(d.data() as Omit<Contact, "id">) }))
+    .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+}
+export async function addContact(c: Omit<Contact, "id">): Promise<string> {
+  const db = getDb();
+  const clean = stripUndefined({ ...c, createdAt: now() });
+  if (!db) {
+    const id = `contact-${Date.now()}-${memContacts().length}`;
+    memContacts().unshift({ id, ...clean } as Contact);
+    return id;
+  }
+  const ref = await db.collection(CONTACTS).add(clean);
+  return ref.id;
+}
+export async function updateContact(id: string, patch: Partial<Contact>): Promise<void> {
+  const db = getDb();
+  const clean = stripUndefined({ ...patch, updatedAt: now() });
+  if (!db) {
+    const c = memContacts().find((x) => x.id === id);
+    if (c) Object.assign(c, clean);
+    return;
+  }
+  await db.collection(CONTACTS).doc(id).set(clean, { merge: true });
+}
+export async function deleteContact(id: string): Promise<void> {
+  const db = getDb();
+  if (!db) {
+    g.__boudierContacts = memContacts().filter((c) => c.id !== id);
+    return;
+  }
+  await db.collection(CONTACTS).doc(id).delete();
 }
 
 // ── Monitor criteria (editable filter) ────────────────────────────────────────

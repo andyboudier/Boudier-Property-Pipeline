@@ -14,6 +14,9 @@ export function SiteHeader() {
           <Link href="/prospects" className="rounded-md px-3 py-1.5 text-ink-soft hover:bg-white hover:text-ink">
             Prospects
           </Link>
+          <Link href="/contacts" className="rounded-md px-3 py-1.5 text-ink-soft hover:bg-white hover:text-ink">
+            Contacts
+          </Link>
           <Link href="/property/new" className="rounded-md px-3 py-1.5 text-ink-soft hover:bg-white hover:text-ink">
             Add site
           </Link>

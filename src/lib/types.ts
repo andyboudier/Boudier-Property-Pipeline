@@ -310,3 +310,21 @@ export interface ProcedabilitySettings {
   maxConcerningForGo: number; // count of "Concerning" tolerated for a clean GO
   minDcasCompletionPct: number; // % of DCAS answered before a verdict is trusted
 }
+
+// ── Contacts (address book with business-card scanning) ──────────────────────
+export interface Contact {
+  id: string;
+  name: string;
+  company: string;
+  jobTitle: string;
+  category: string; // e.g. Architect, Estate Agent, Accountant, Coach
+  email: string;
+  phone: string;
+  mobile: string;
+  website: string;
+  address: string;
+  notes: string;
+  cardImageUrl?: string; // optional captured business-card image (compressed data URL)
+  createdAt: string;
+  updatedAt?: string;
+}
