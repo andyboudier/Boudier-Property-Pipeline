@@ -68,18 +68,18 @@ async function runResearch(system: string, user: string, tool: AnyTool): Promise
   if (!isAI()) return null;
   const Anthropic = (await import("@anthropic-ai/sdk")).default;
   const client = new Anthropic();
-  const webTool = { type: "web_search_20250305", name: "web_search", max_uses: 4 };
+  const webTool = { type: "web_search_20250305", name: "web_search", max_uses: 2 };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const create = (body: Record<string, unknown>) => client.messages.create(body as any) as unknown as Promise<{ content?: { type: string; name?: string; text?: string; input?: unknown }[] }>;
 
   try {
-    const msg = await create({ model: MODEL, max_tokens: 4096, system, tools: [webTool, tool], messages: [{ role: "user", content: user }] });
+    const msg = await create({ model: MODEL, max_tokens: 3000, system, tools: [webTool, tool], messages: [{ role: "user", content: user }] });
     const out = pickTool(msg, tool.name);
     if (out) return out;
     // It researched but answered in prose — force the tool with what it found.
     const forced = await create({
       model: MODEL,
-      max_tokens: 4096,
+      max_tokens: 3000,
       system,
       tools: [tool],
       tool_choice: { type: "tool", name: tool.name },
@@ -91,7 +91,7 @@ async function runResearch(system: string, user: string, tool: AnyTool): Promise
     try {
       const msg = await create({
         model: MODEL,
-        max_tokens: 4096,
+        max_tokens: 3000,
         system,
         tools: [tool],
         tool_choice: { type: "tool", name: tool.name },
@@ -107,7 +107,8 @@ async function runResearch(system: string, user: string, tool: AnyTool): Promise
 const ANALYST =
   "You are a UK residential/commercial property development analyst working for Boudier Property. " +
   "Research the specific property below using web search where possible — the agent's listing, the local planning authority's planning portal (recent/nearby applications), Land Registry / sold prices, and comparable listings on Rightmove/Zoopla/OnTheMarket. " +
-  "Be concrete and evidence-based; where you must estimate, say so. Use GBP. Today's market.";
+  "Be concrete and evidence-based; where you must estimate, say so. Use GBP. Today's market. " +
+  "IMPORTANT: do at most 2 quick web searches, then record. Be concise — the 'notes' field under ~900 characters, and per-item notes a single short clause. Finish promptly.";
 
 // ── DCAS ─────────────────────────────────────────────────────────────────────
 export interface DcasResearch {
@@ -308,5 +309,5 @@ export function appendNotes(existing: string | undefined, section: string, notes
   if (!notes.trim()) return existing || "";
   const date = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   const header = `— AI research (${section}) · ${date} —`;
-  return [(existing || "").trim(), `${header}\n${notes.trim()}`].filter(Boolean).join("\n\n");
+  return [(existing || "").trim(), `${header}\n${notes.trim().slice(0, 2000)}`].filter(Boolean).join("\n\n");
 }
