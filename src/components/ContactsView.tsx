@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import type { Contact } from "@/lib/types";
 import { DEFAULT_CATEGORIES, allCategories, matchesQuery } from "@/lib/contacts";
 import { actionAddContact, actionUpdateContact, actionDeleteContact, actionScanCard } from "@/app/actions";
+import { CameraScanner } from "./CameraScanner";
 
 type Draft = Partial<Contact>;
 
@@ -15,6 +16,7 @@ export function ContactsView({ initialContacts }: { initialContacts: Contact[] }
   const [cat, setCat] = useState<string | null>(null);
   const [editing, setEditing] = useState<Draft | null>(null); // open modal when non-null
   const [scanning, setScanning] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -29,14 +31,11 @@ export function ContactsView({ initialContacts }: { initialContacts: Contact[] }
     return m;
   }, [initialContacts]);
 
-  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // allow re-selecting the same file
-    if (!file) return;
+  // Read a card image (already cropped/compressed) and open the prefilled modal.
+  async function scanImage(dataUrl: string) {
     setMsg(null);
     setScanning(true);
     try {
-      const dataUrl = await compressImage(file);
       const res = await actionScanCard(dataUrl);
       if (res.ok) {
         setEditing({ ...res.fields, notes: "", cardImageUrl: dataUrl });
@@ -51,6 +50,17 @@ export function ContactsView({ initialContacts }: { initialContacts: Contact[] }
     }
   }
 
+  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file
+    if (!file) return;
+    try {
+      await scanImage(await compressImage(file));
+    } catch {
+      setMsg("Couldn't process that image.");
+    }
+  }
+
   return (
     <div className="space-y-5">
       {/* Toolbar */}
@@ -62,10 +72,11 @@ export function ContactsView({ initialContacts }: { initialContacts: Contact[] }
           onChange={(e) => setQuery(e.target.value)}
         />
         <div className="flex items-center gap-2">
-          <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onPickFile} />
-          <button onClick={() => fileRef.current?.click()} disabled={scanning} className="btn-primary disabled:opacity-60">
-            {scanning ? "Reading card…" : "📷 Scan business card"}
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onPickFile} />
+          <button onClick={() => setShowCamera(true)} disabled={scanning} className="btn-primary disabled:opacity-60">
+            {scanning ? "Reading card…" : "📷 Take photo"}
           </button>
+          <button onClick={() => fileRef.current?.click()} disabled={scanning} className="btn-ghost">Upload</button>
           <button onClick={() => setEditing({})} className="btn-ghost">+ Add</button>
         </div>
       </div>
@@ -92,6 +103,16 @@ export function ContactsView({ initialContacts }: { initialContacts: Contact[] }
             <ContactCard key={c.id} c={c} onEdit={() => setEditing(c)} />
           ))}
         </div>
+      )}
+
+      {showCamera && (
+        <CameraScanner
+          onClose={() => setShowCamera(false)}
+          onCapture={(dataUrl) => {
+            setShowCamera(false);
+            void scanImage(dataUrl);
+          }}
+        />
       )}
 
       {editing && (
@@ -145,6 +166,9 @@ function ContactCard({ c, onEdit }: { c: Contact; onEdit: () => void }) {
         {c.address && <div className="text-xs text-ink-muted">{c.address}</div>}
       </div>
       {c.notes && <p className="mt-2 line-clamp-3 text-xs text-ink-muted">{c.notes}</p>}
+      {c.cardImageUrl && (
+        <img src={c.cardImageUrl} alt="Business card" className="mt-2 max-h-16 w-auto rounded border border-paper-line" />
+      )}
       <div className="mt-auto pt-3 text-right">
         <button onClick={onEdit} className="text-xs text-ink-muted hover:text-bronze-dark">Edit</button>
       </div>
