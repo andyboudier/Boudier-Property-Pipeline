@@ -324,3 +324,49 @@ export async function actionScanCard(imageDataUrl: string) {
     return { ok: false as const, error: "Card scan failed. Try again or enter the details manually." };
   }
 }
+
+// ── AI research agent (auto-fill sections) ────────────────────────────────────
+export async function actionResearchDcas(id: string) {
+  const p = await getProperty(id);
+  if (!p) return { ok: false as const, error: "Property not found." };
+  const { researchDcas, appendNotes } = await import("@/lib/research");
+  const r = await researchDcas(p);
+  if (!r) return { ok: false as const, error: "Research failed — check the AI key has credit." };
+  if (r.notes) await updateProperty(id, { notes: appendNotes(p.notes, "DCAS", r.notes) });
+  revalidatePath(`/`);
+  revalidatePath(`/property/${id}`);
+  return { ok: true as const, items: r.items, notes: r.notes };
+}
+
+export async function actionResearchMac(id: string) {
+  const p = await getProperty(id);
+  if (!p) return { ok: false as const, error: "Property not found." };
+  const { researchMac, appendNotes } = await import("@/lib/research");
+  const r = await researchMac(p);
+  if (!r) return { ok: false as const, error: "Research failed — check the AI key has credit." };
+  if (r.notes) await updateProperty(id, { notes: appendNotes(p.notes, "MAC", r.notes) });
+  revalidatePath(`/`);
+  revalidatePath(`/property/${id}`);
+  return { ok: true as const, searchArea: r.searchArea, propertyType: r.propertyType, comps: r.comps, notes: r.notes };
+}
+
+export async function actionResearchIpad(id: string) {
+  const p = await getProperty(id);
+  if (!p) return { ok: false as const, error: "Property not found." };
+  const { researchIpad, appendNotes } = await import("@/lib/research");
+  const r = await researchIpad(p);
+  if (!r) return { ok: false as const, error: "Research failed — check the AI key has credit." };
+  if (r.notes) await updateProperty(id, { notes: appendNotes(p.notes, "IPAD", r.notes) });
+  revalidatePath(`/`);
+  revalidatePath(`/property/${id}`);
+  return {
+    ok: true as const,
+    purchasePrice: r.purchasePrice,
+    areaM2: r.areaM2,
+    newBuildRatePerM2: r.newBuildRatePerM2,
+    commercialRatePerM2: r.commercialRatePerM2,
+    contingencyPct: r.contingencyPct,
+    units: r.units,
+    notes: r.notes,
+  };
+}

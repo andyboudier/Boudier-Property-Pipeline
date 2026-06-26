@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import type { Dcas, RatingValue } from "@/lib/types";
 import { RATINGS, ratingColor } from "@/lib/ratings";
 import { dcasStats } from "@/lib/dcasSchema";
-import { actionSaveDcas } from "@/app/actions";
+import { actionSaveDcas, actionResearchDcas } from "@/app/actions";
 import { useAutosave } from "@/lib/useAutosave";
 
 export function DcasForm({
@@ -18,8 +18,44 @@ export function DcasForm({
   guidePrice: number | null;
 }) {
   const [dcas, setDcas] = useState<Dcas>(initial);
+  const [researching, setResearching] = useState(false);
+  const [aiMsg, setAiMsg] = useState<string | null>(null);
   const { status, savedAt, dirty, saveNow } = useAutosave(dcas, (d) => actionSaveDcas(propertyId, d));
   const pending = status === "saving";
+
+  async function researchFill() {
+    if (!window.confirm("Research this property with AI and fill in empty DCAS ratings? Useful findings will be added to the pipeline Notes.")) return;
+    setResearching(true);
+    setAiMsg(null);
+    try {
+      const res = await actionResearchDcas(propertyId);
+      if (res.ok) {
+        const map = new Map(res.items.map((i) => [i.id, i]));
+        setDcas((d) => ({
+          ...d,
+          sections: d.sections.map((s) => ({
+            ...s,
+            items: s.items.map((it) => {
+              const r = map.get(it.id);
+              if (!r) return it;
+              return {
+                ...it,
+                rating: it.rating == null && r.rating != null ? (r.rating as RatingValue) : it.rating,
+                note: !it.note && r.note ? r.note : it.note,
+              };
+            }),
+          })),
+        }));
+        setAiMsg(`Filled from research${res.notes ? " · findings added to pipeline Notes" : ""}.`);
+      } else {
+        setAiMsg(res.error || "Research failed.");
+      }
+    } catch {
+      setAiMsg("Research failed — try again.");
+    } finally {
+      setResearching(false);
+    }
+  }
 
   const stats = useMemo(() => dcasStats(dcas), [dcas]);
 
@@ -62,6 +98,10 @@ export function DcasForm({
             )}
           </div>
           <div className="flex items-center gap-2">
+            {aiMsg && <span className="hidden text-xs text-status-go sm:inline">{aiMsg}</span>}
+            <button onClick={researchFill} disabled={researching} className="btn-ghost disabled:opacity-60" title="Research the property with AI and fill empty fields">
+              {researching ? "Researching…" : "✨ AI auto-fill"}
+            </button>
             <Link href={`/property/${propertyId}/dcas/print`} className="btn-ghost">
               PDF / Print
             </Link>

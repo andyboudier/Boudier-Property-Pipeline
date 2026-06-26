@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { Ipad, IpadInputs, IpadUnit } from "@/lib/types";
 import { computeIpad, sqmToSqft } from "@/lib/ipadCalc";
-import { actionSaveIpad } from "@/app/actions";
+import { actionSaveIpad, actionResearchIpad } from "@/app/actions";
 import { gbp, num, pct } from "@/lib/format";
 import { useAutosave } from "@/lib/useAutosave";
 
@@ -76,8 +76,40 @@ const DEV_FINANCE: FieldDef[] = [
 
 export function IpadForm({ propertyId, initial }: { propertyId: string; initial: Ipad }) {
   const [inp, setInp] = useState<IpadInputs>(initial.inputs);
+  const [researching, setResearching] = useState(false);
+  const [aiMsg, setAiMsg] = useState<string | null>(null);
   const { status, savedAt, dirty, saveNow } = useAutosave(inp, (v) => actionSaveIpad(propertyId, { inputs: v }));
   const pending = status === "saving";
+
+  async function researchFill() {
+    if (!window.confirm("Research this property with AI and fill in empty IPAD inputs (purchase price, build cost, unit mix/GDV)? Findings will be added to the pipeline Notes.")) return;
+    setResearching(true);
+    setAiMsg(null);
+    try {
+      const res = await actionResearchIpad(propertyId);
+      if (res.ok) {
+        setInp((s) => {
+          const n = { ...s };
+          if (res.purchasePrice != null && !n.purchasePrice) n.purchasePrice = res.purchasePrice;
+          if (res.areaM2 != null && !n.areaM2) n.areaM2 = res.areaM2;
+          if (res.newBuildRatePerM2 != null && !n.newBuildRatePerM2) n.newBuildRatePerM2 = res.newBuildRatePerM2;
+          if (res.commercialRatePerM2 != null && !n.commercialRatePerM2) n.commercialRatePerM2 = res.commercialRatePerM2;
+          if (res.contingencyPct != null && !n.contingencyPct) n.contingencyPct = res.contingencyPct;
+          if (res.units.length && (!n.units.length || n.units.every((u) => !u.totalGdv))) {
+            n.units = res.units.map((u, i) => ({ id: `u${Date.now()}-${i}`, units: u.units || 1, m2: u.m2 || 0, type: u.type || "", totalGdv: u.totalGdv || 0 }));
+          }
+          return n;
+        });
+        setAiMsg(`Filled from research${res.notes ? " · findings added to pipeline Notes" : ""}.`);
+      } else {
+        setAiMsg(res.error || "Research failed.");
+      }
+    } catch {
+      setAiMsg("Research failed — try again.");
+    } finally {
+      setResearching(false);
+    }
+  }
 
   const out = useMemo(() => computeIpad(inp), [inp]);
 
@@ -133,6 +165,10 @@ export function IpadForm({ propertyId, initial }: { propertyId: string; initial:
             )}
           </div>
           <div className="flex items-center gap-2">
+            {aiMsg && <span className="hidden text-xs text-status-go lg:inline">{aiMsg}</span>}
+            <button onClick={researchFill} disabled={researching} className="btn-ghost disabled:opacity-60" title="Research the property with AI and fill empty inputs">
+              {researching ? "Researching…" : "✨ AI auto-fill"}
+            </button>
             <Link href={`/property/${propertyId}/ipad/print`} className="btn-ghost">PDF / Print</Link>
             <button onClick={saveNow} disabled={pending} className="btn-primary disabled:opacity-60">
               {pending ? "Saving…" : "Save now"}

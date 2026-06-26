@@ -7,6 +7,7 @@ import { DcasForm } from "@/components/DcasForm";
 import type { Dcas } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60; // AI research agent (auto-fill) needs headroom
 
 export default async function DcasPage({ params }: { params: { id: string } }) {
   const p = await getProperty(params.id);

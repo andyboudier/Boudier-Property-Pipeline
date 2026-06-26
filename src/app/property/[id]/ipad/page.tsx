@@ -6,6 +6,7 @@ import { IpadForm } from "@/components/IpadForm";
 import type { Ipad } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60; // AI research agent (auto-fill) needs headroom
 
 export default async function IpadPage({ params }: { params: { id: string } }) {
   const p = await getProperty(params.id);

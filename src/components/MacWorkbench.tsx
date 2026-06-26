@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { Mac, MacComp, MacSegment, MacSearchParams, MacSearchFilters } from "@/lib/types";
 import { MAC_OPTIONS, MAC_RADIUS_OPTIONS, MAC_PROPERTY_TYPES, DEFAULT_SEARCH, emptyComp, emptySegment, segmentStats, pricePerM2, daysOnMarket } from "@/lib/macCalc";
-import { actionSaveMac } from "@/app/actions";
+import { actionSaveMac, actionResearchMac } from "@/app/actions";
 import { gbp, num } from "@/lib/format";
 import { useAutosave } from "@/lib/useAutosave";
 import { MacSummaryView } from "./MacSummaryView";
@@ -23,8 +23,56 @@ const FILTER_ROWS: [keyof MacSearchFilters, string][] = [
 export function MacWorkbench({ propertyId, initial }: { propertyId: string; initial: Mac }) {
   const [mac, setMac] = useState<Mac>(initial);
   const [showSummary, setShowSummary] = useState(false);
+  const [researching, setResearching] = useState(false);
+  const [aiMsg, setAiMsg] = useState<string | null>(null);
   const { status, savedAt, dirty, saveNow } = useAutosave(mac, (v) => actionSaveMac(propertyId, v));
   const pending = status === "saving";
+
+  async function researchFill() {
+    if (!window.confirm("Research the local market with AI and add comparable properties to the first segment? Findings will be added to the pipeline Notes.")) return;
+    setResearching(true);
+    setAiMsg(null);
+    try {
+      const res = await actionResearchMac(propertyId);
+      if (res.ok) {
+        setMac((m) => {
+          const next = { ...m };
+          next.search = {
+            ...DEFAULT_SEARCH,
+            ...m.search,
+            searchArea: m.search?.searchArea || res.searchArea,
+            propertyType: m.search?.propertyType || res.propertyType || DEFAULT_SEARCH.propertyType,
+          };
+          if (res.comps.length && next.segments.length) {
+            const newComps = res.comps.map((c, i) => ({
+              ...emptyComp(`ai-${Date.now()}-${i}`),
+              property: c.property,
+              area: c.area,
+              askingPrice: c.askingPrice,
+              beds: c.beds,
+              propertyType: c.propertyType,
+              totalM2: c.totalM2,
+              status: c.status,
+              agent: c.agent,
+              onMarketSince: c.onMarketSince,
+              link: c.link,
+              comments: c.comments,
+            }));
+            const filled = next.segments[0].comps.filter((c) => c.property.trim() !== "");
+            next.segments = next.segments.map((s, idx) => (idx !== 0 ? s : { ...s, comps: filled.length ? [...filled, ...newComps] : newComps }));
+          }
+          return next;
+        });
+        setAiMsg(`Added ${res.comps.length} comparable${res.comps.length === 1 ? "" : "s"}${res.notes ? " · findings added to pipeline Notes" : ""}.`);
+      } else {
+        setAiMsg(res.error || "Research failed.");
+      }
+    } catch {
+      setAiMsg("Research failed — try again.");
+    } finally {
+      setResearching(false);
+    }
+  }
 
   const touch = () => {}; // edits are picked up by autosave via state change
 
@@ -101,6 +149,10 @@ export function MacWorkbench({ propertyId, initial }: { propertyId: string; init
             )}
           </div>
           <div className="flex items-center gap-2">
+            {aiMsg && <span className="hidden text-xs text-status-go lg:inline">{aiMsg}</span>}
+            <button onClick={researchFill} disabled={researching} className="btn-ghost disabled:opacity-60" title="Research the local market with AI and add comparables">
+              {researching ? "Researching…" : "✨ AI auto-fill"}
+            </button>
             <button onClick={() => setShowSummary(true)} className="btn-ghost">Summary</button>
             <Link href={`/property/${propertyId}/mac/print`} className="btn-ghost">PDF / Print</Link>
             <button onClick={saveNow} disabled={pending} className="btn-primary disabled:opacity-60">
