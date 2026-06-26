@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import type { Contact } from "@/lib/types";
 import { DEFAULT_CATEGORIES, allCategories, matchesQuery } from "@/lib/contacts";
 import { actionAddContact, actionUpdateContact, actionDeleteContact, actionScanCard } from "@/app/actions";
-import { CameraScanner } from "./CameraScanner";
+import { CameraScanner, cameraErrorMessage } from "./CameraScanner";
 
 type Draft = Partial<Contact>;
 
@@ -16,9 +16,33 @@ export function ContactsView({ initialContacts }: { initialContacts: Contact[] }
   const [cat, setCat] = useState<string | null>(null);
   const [editing, setEditing] = useState<Draft | null>(null); // open modal when non-null
   const [scanning, setScanning] = useState(false);
-  const [showCamera, setShowCamera] = useState(false);
+  const [stream, setStream] = useState<MediaStream | null>(null); // live in-app camera
+  const [camErr, setCamErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null); // upload (gallery / file)
+  const nativeRef = useRef<HTMLInputElement>(null); // device camera (OS) fallback
+
+  // Acquire the camera inside the tap handler — Safari/iOS require getUserMedia
+  // to run in a user gesture, so we can't do it from an effect after opening.
+  async function takePhoto() {
+    setMsg(null);
+    setCamErr(null);
+    const md = typeof navigator !== "undefined" ? navigator.mediaDevices : undefined;
+    if (typeof window !== "undefined" && (!window.isSecureContext || !md?.getUserMedia)) {
+      nativeRef.current?.click(); // no in-app camera available → OS camera
+      return;
+    }
+    try {
+      const s = await md!.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+      setStream(s);
+    } catch (e) {
+      setCamErr(cameraErrorMessage(e));
+    }
+  }
+  function closeCamera() {
+    stream?.getTracks().forEach((t) => t.stop());
+    setStream(null);
+  }
 
   const categories = useMemo(() => allCategories(initialContacts), [initialContacts]);
   const filtered = useMemo(
@@ -73,7 +97,8 @@ export function ContactsView({ initialContacts }: { initialContacts: Contact[] }
         />
         <div className="flex items-center gap-2">
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onPickFile} />
-          <button onClick={() => setShowCamera(true)} disabled={scanning} className="btn-primary disabled:opacity-60">
+          <input ref={nativeRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onPickFile} />
+          <button onClick={takePhoto} disabled={scanning} className="btn-primary disabled:opacity-60">
             {scanning ? "Reading card…" : "📷 Take photo"}
           </button>
           <button onClick={() => fileRef.current?.click()} disabled={scanning} className="btn-ghost">Upload</button>
@@ -105,14 +130,29 @@ export function ContactsView({ initialContacts }: { initialContacts: Contact[] }
         </div>
       )}
 
-      {showCamera && (
+      {stream && (
         <CameraScanner
-          onClose={() => setShowCamera(false)}
+          stream={stream}
+          onClose={closeCamera}
           onCapture={(dataUrl) => {
-            setShowCamera(false);
+            closeCamera();
             void scanImage(dataUrl);
           }}
         />
+      )}
+
+      {camErr && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/60 p-4" onClick={() => setCamErr(null)}>
+          <div className="w-full max-w-md rounded-xl bg-paper-warm p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-serif text-lg text-ink">Camera</h3>
+            <p className="mt-2 text-sm text-ink-soft">{camErr}</p>
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <button onClick={() => setCamErr(null)} className="btn-ghost">Close</button>
+              <button onClick={() => { setCamErr(null); fileRef.current?.click(); }} className="btn-ghost">Upload photo</button>
+              <button onClick={() => { setCamErr(null); nativeRef.current?.click(); }} className="btn-primary">Use device camera</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {editing && (
