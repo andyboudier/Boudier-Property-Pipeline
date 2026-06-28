@@ -528,14 +528,43 @@ async function tryFirecrawl(url: string): Promise<string | null> {
   }
 }
 
-/** Fetch a page's raw HTML (or Firecrawl markdown) — used by the monitor to read
+// Tavily Extract — fallback scraper used when Firecrawl returns nothing (e.g.
+// out of credits). Inert without TAVILY_API_KEY. Returns page content as text.
+async function tryTavily(url: string): Promise<string | null> {
+  const key = process.env.TAVILY_API_KEY;
+  if (!key) return null;
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 25000);
+    const res = await fetch("https://api.tavily.com/extract", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "content-type": "application/json" },
+      body: JSON.stringify({ urls: [url], extract_depth: "advanced", include_images: false }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const j = await res.json();
+    const r = j?.results?.[0];
+    return r?.raw_content || r?.content || null;
+  } catch {
+    return null;
+  }
+}
+
+// Primary scraper (Firecrawl) with an automatic Tavily fallback.
+async function tryScrape(url: string): Promise<string | null> {
+  return (await tryFirecrawl(url)) ?? (await tryTavily(url));
+}
+
+/** Fetch a page's raw HTML (or scraper content) — used by the monitor to read
  * an agent results page. Returns null if unreachable/blocked and no scraper. */
 export async function fetchRawContent(url: string): Promise<string | null> {
   // The big portals block datacenter IPs (Vercel) on a plain fetch, so go via
   // the render/proxy scraper first; only fall back to a direct fetch.
   try {
     if (/(rightmove|zoopla|onthemarket)\./i.test(new URL(url).hostname)) {
-      const fc = await tryFirecrawl(url);
+      const fc = await tryScrape(url);
       if (fc) return fc;
     }
   } catch {
@@ -551,7 +580,7 @@ export async function fetchRawContent(url: string): Promise<string | null> {
   } catch {
     /* fall through to scraper */
   }
-  return tryFirecrawl(url);
+  return tryScrape(url);
 }
 
 // Lightweight availability re-check — fetches the page (with scraper fallback)
@@ -635,7 +664,7 @@ export async function importListing(input: { url?: string; html?: string }): Pro
 
     // Blocked or empty → try the paid scraper (Firecrawl) if configured.
     if (blocked || !html) {
-      const fc = await tryFirecrawl(url);
+      const fc = await tryScrape(url);
       if (fc) {
         html = fc;
         blocked = false;

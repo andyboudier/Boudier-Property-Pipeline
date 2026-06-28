@@ -20,6 +20,9 @@ export function SiteHeader() {
           <Link href="/property/new" className="rounded-md px-3 py-1.5 text-ink-soft hover:bg-white hover:text-ink">
             Add site
           </Link>
+          <Link href="/usage" className="rounded-md px-3 py-1.5 text-ink-soft hover:bg-white hover:text-ink">
+            Usage
+          </Link>
           <Link href="/settings" className="rounded-md px-3 py-1.5 text-ink-soft hover:bg-white hover:text-ink">
             Criteria
           </Link>
