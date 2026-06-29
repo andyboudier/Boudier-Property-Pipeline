@@ -7,6 +7,7 @@ import { computeIpad, sqmToSqft } from "@/lib/ipadCalc";
 import { actionSaveIpad, actionResearchIpad } from "@/app/actions";
 import { gbp, num, pct } from "@/lib/format";
 import { useAutosave } from "@/lib/useAutosave";
+import { IpadProjectCosts } from "./IpadProjectCosts";
 
 type Kind = "money" | "num" | "pct" | "months";
 interface FieldDef {
@@ -249,25 +250,7 @@ export function IpadForm({ propertyId, initial }: { propertyId: string; initial:
             </div>
           </section>
 
-          <Group title="Purchase costs & fees" fields={PURCHASE} inp={inp} set={set} setOverride={setOverride} feeAmounts={out.feeAmounts} />
-          <Group title="Construction — direct costs" fields={CONSTRUCTION_DIRECT} inp={inp} set={set} setOverride={setOverride} feeAmounts={out.feeAmounts} note="Build rates multiply by developable area (m²). Contingency applies to build + landscaping + other." />
-          <Group title="Construction — professional fees" fields={CONSTRUCTION_FEES} inp={inp} set={set} setOverride={setOverride} feeAmounts={out.feeAmounts} note="Each % is of the construction base. Use the £ toggle on any fee to enter a fixed amount instead." />
-          <Group title="Finance — purchase" fields={PURCHASE_FINANCE} inp={inp} set={set} setOverride={setOverride} feeAmounts={out.feeAmounts} />
-          <Group title="Finance — development" fields={DEV_FINANCE} inp={inp} set={set} setOverride={setOverride} feeAmounts={out.feeAmounts} />
-
-          <section className="card p-5">
-            <h2 className="font-serif text-lg text-ink">Disposal</h2>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <PctValueField
-                label="Agent selling fee (of GDV)"
-                pctValue={inp.agentSellingPct}
-                override={inp.overrides?.agentSellingPct}
-                computed={out.feeAmounts.agentSellingPct ?? 0}
-                onPct={(v) => set("agentSellingPct", v)}
-                onOverride={(v) => setOverride("agentSellingPct", v)}
-              />
-            </div>
-          </section>
+          <IpadProjectCosts inp={inp} out={out} set={set} setOverride={setOverride} />
         </div>
 
         {/* OUTPUT COLUMN */}
