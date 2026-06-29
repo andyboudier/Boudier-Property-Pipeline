@@ -156,6 +156,7 @@ export function IpadForm({ propertyId, initial }: { propertyId: string; initial:
               <table className="w-full min-w-[520px] text-sm">
                 <thead>
                   <tr className="text-left text-[11px] uppercase tracking-wide text-ink-muted">
+                    <th className="py-1.5 pr-2 font-medium">#</th>
                     <th className="py-1.5 pr-2 font-medium">No.</th>
                     <th className="py-1.5 pr-2 font-medium">Type</th>
                     <th className="py-1.5 pr-2 font-medium">m² / unit</th>
@@ -164,8 +165,9 @@ export function IpadForm({ propertyId, initial }: { propertyId: string; initial:
                   </tr>
                 </thead>
                 <tbody>
-                  {inp.units.map((u) => (
+                  {inp.units.map((u, i) => (
                     <tr key={u.id} className="border-t border-paper-line">
+                      <td className="py-1.5 pr-2 tabular-nums text-ink-muted">{i + 1}</td>
                       <td className="py-1.5 pr-2"><input type="number" className="field-sm w-16" value={u.units} onChange={(e) => setUnit(u.id, { units: Number(e.target.value) || 0 })} /></td>
                       <td className="py-1.5 pr-2"><input className="field-sm" value={u.type} onChange={(e) => setUnit(u.id, { type: e.target.value })} /></td>
                       <td className="py-1.5 pr-2"><input type="number" className="field-sm w-20" value={u.m2} onChange={(e) => setUnit(u.id, { m2: Number(e.target.value) || 0 })} /></td>
@@ -174,7 +176,7 @@ export function IpadForm({ propertyId, initial }: { propertyId: string; initial:
                     </tr>
                   ))}
                   {inp.units.length === 0 && (
-                    <tr><td colSpan={5} className="py-3 text-center text-xs text-ink-muted">No unit lines yet.</td></tr>
+                    <tr><td colSpan={6} className="py-3 text-center text-xs text-ink-muted">No unit lines yet.</td></tr>
                   )}
                 </tbody>
               </table>
