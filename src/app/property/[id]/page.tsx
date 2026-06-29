@@ -57,11 +57,21 @@ export default async function PropertyOverview({ params }: { params: { id: strin
       <div>
         <Link href="/" className="text-xs text-ink-muted hover:text-bronze-dark">← Pipeline</Link>
         <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h1 className="font-serif text-3xl text-ink">{p.name}</h1>
-            <p className="mt-1 text-sm text-ink-muted">
-              {p.town} · <span className="text-ink-soft">{p.lpa}</span>
-            </p>
+          <div className="flex items-start gap-4">
+            {p.imageUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={p.imageUrl}
+                alt={p.name}
+                className="h-20 w-28 shrink-0 rounded-lg border border-paper-line object-cover"
+              />
+            )}
+            <div>
+              <h1 className="font-serif text-3xl text-ink">{p.name}</h1>
+              <p className="mt-1 text-sm text-ink-muted">
+                {p.town} · <span className="text-ink-soft">{p.lpa}</span>
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <StatusBadge status={result.status} />
