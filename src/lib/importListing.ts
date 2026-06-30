@@ -552,9 +552,23 @@ async function tryTavily(url: string): Promise<string | null> {
   }
 }
 
-// Primary scraper (Firecrawl) with an automatic Tavily fallback.
+function isPortalHost(url: string): boolean {
+  try {
+    return /(rightmove|zoopla|onthemarket)\./i.test(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+// Host-aware scraping to conserve Firecrawl credits:
+// • Portals (Rightmove/Zoopla/OnTheMarket) have heavy anti-bot, so use
+//   Firecrawl (stealth proxy) first; Tavily only as a last resort.
+// • Everything else tries Tavily first (cheaper / saves Firecrawl credits),
+//   falling back to Firecrawl. When TAVILY_API_KEY is unset, tryTavily returns
+//   null instantly, so this transparently reverts to Firecrawl-only.
 async function tryScrape(url: string): Promise<string | null> {
-  return (await tryFirecrawl(url)) ?? (await tryTavily(url));
+  if (isPortalHost(url)) return (await tryFirecrawl(url)) ?? (await tryTavily(url));
+  return (await tryTavily(url)) ?? (await tryFirecrawl(url));
 }
 
 /** Fetch a page's raw HTML (or scraper content) — used by the monitor to read
