@@ -1,11 +1,13 @@
 import Link from "next/link";
-import { getFirecrawlUsage, getFirestoreCounts, scraperStatus } from "@/lib/usage";
+import { getFirecrawlUsage, getTavilyUsage, getFirestoreCounts, scraperStatus } from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
 
 export default async function UsagePage() {
-  const [fc, counts] = await Promise.all([getFirecrawlUsage(), getFirestoreCounts()]);
+  const [fc, tv, counts] = await Promise.all([getFirecrawlUsage(), getTavilyUsage(), getFirestoreCounts()]);
   const scrapers = scraperStatus();
+  const tvRemaining = tv.planLimit != null && tv.planUsage != null ? tv.planLimit - tv.planUsage : null;
+  const tvPct = tv.planLimit ? Math.round(((tvRemaining ?? 0) / tv.planLimit) * 100) : null;
   const reset = fc.periodEnd ? new Date(fc.periodEnd).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : null;
   const creditPct = fc.planCredits ? Math.round(((fc.remainingCredits ?? 0) / fc.planCredits) * 100) : null;
 
@@ -42,8 +44,26 @@ export default async function UsagePage() {
             <Muted>No Firecrawl key configured, or usage unavailable.</Muted>
           )}
           <p className="mt-3 text-xs text-ink-muted">
-            Fallback when exhausted: <strong className={scrapers.tavily ? "text-status-go" : "text-ink-muted"}>{scrapers.tavily ? "Tavily (ready)" : "Tavily (add TAVILY_API_KEY to enable)"}</strong>
+            Portals use Firecrawl first; other sites prefer Tavily to save credits.
           </p>
+        </Card>
+
+        {/* ── Tavily (live) ── */}
+        <Card title="Tavily" sub="Web scraper (agent sites) — primary for non-portals" href="https://app.tavily.com/" hrefLabel="Open dashboard">
+          {!scrapers.tavily ? (
+            <Muted>Not configured. Add <code className="text-ink">TAVILY_API_KEY</code> in Vercel to enable the fallback.</Muted>
+          ) : tv.ok ? (
+            <>
+              <Meter label={`Plan credits${tv.plan ? ` (${tv.plan})` : ""}`} remaining={tvRemaining ?? undefined} plan={tv.planLimit ?? undefined} pct={tvPct} />
+              <div className="mt-2 flex flex-wrap gap-x-4 text-xs text-ink-muted">
+                {tv.extractUsage != null && <span>Extract used: <strong className="text-ink-soft">{tv.extractUsage.toLocaleString()}</strong></span>}
+                {tv.searchUsage != null && <span>Search used: <strong className="text-ink-soft">{tv.searchUsage.toLocaleString()}</strong></span>}
+              </div>
+            </>
+          ) : (
+            <Muted>Tavily key configured, but usage couldn&apos;t be read right now.</Muted>
+          )}
+          <p className="mt-3 text-xs text-ink-muted">Used first for non-portal sites; Firecrawl handles Rightmove/Zoopla.</p>
         </Card>
 
         {/* ── Anthropic (link) ── */}

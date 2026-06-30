@@ -36,6 +36,38 @@ export async function getFirecrawlUsage(): Promise<FirecrawlUsage> {
   }
 }
 
+export interface TavilyUsage {
+  ok: boolean;
+  configured: boolean;
+  plan?: string;
+  planUsage?: number;
+  planLimit?: number | null;
+  extractUsage?: number;
+  searchUsage?: number;
+}
+
+export async function getTavilyUsage(): Promise<TavilyUsage> {
+  const key = process.env.TAVILY_API_KEY;
+  if (!key) return { ok: false, configured: false };
+  try {
+    const res = await fetch("https://api.tavily.com/usage", { headers: { Authorization: `Bearer ${key}` }, cache: "no-store" });
+    if (!res.ok) return { ok: false, configured: true };
+    const j = await res.json();
+    const a = j?.account;
+    return {
+      ok: true,
+      configured: true,
+      plan: a?.current_plan,
+      planUsage: a?.plan_usage,
+      planLimit: a?.plan_limit,
+      extractUsage: a?.extract_usage,
+      searchUsage: a?.search_usage,
+    };
+  } catch {
+    return { ok: false, configured: true };
+  }
+}
+
 export async function getFirestoreCounts() {
   try {
     const [p, l, c, w] = await Promise.all([listProperties(), listLeads(), listContacts(), listWatch()]);
