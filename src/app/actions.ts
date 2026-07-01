@@ -198,6 +198,12 @@ export async function actionDeleteProspect(id: string) {
 export async function actionPromoteProspect(id: string) {
   const lead = await getLead(id);
   if (!lead) return { ok: false as const };
+  // Already promoted and the property still exists → reuse it, never recreate
+  // (recreating would overwrite any DCAS/MAC/IPAD already captured there).
+  if (lead.promotedPropertyId) {
+    const existing = await getProperty(lead.promotedPropertyId);
+    if (existing) return { ok: true as const, propertyId: existing.id };
+  }
   const propertyId = await createProperty({
     name: lead.name || "Untitled site",
     town: lead.town || "",

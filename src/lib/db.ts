@@ -59,11 +59,35 @@ export async function getProperty(id: string): Promise<Property | null> {
 
 export async function createProperty(p: Omit<Property, "id">, id?: string): Promise<string> {
   const db = getDb();
-  const docId = id || slugify(p.name) || `prop-${Date.now()}`;
+  const base = id || slugify(p.name) || `prop-${Date.now()}`;
   const record = stripUndefined({ ...p, createdAt: now(), updatedAt: now() });
   if (!db) {
+    let docId = base;
+    if (!id) {
+      let n = 2;
+      while (memStore().has(docId)) docId = `${base}-${n++}`; // never clobber existing
+    } else if (memStore().has(docId)) {
+      const cur = memStore().get(docId)!;
+      const { id: _omit, ...data } = cur;
+      memSnapshots().unshift({ id: `snap-${Date.now()}-${memSnapshots().length}`, propertyId: docId, name: cur.name, reason: "overwrite", takenAt: now(), data });
+    }
     memStore().set(docId, { id: docId, ...record } as Property);
     return docId;
+  }
+  let docId = base;
+  if (!id) {
+    // A generated (slug) id must never overwrite an existing appraisal — pick a
+    // fresh id if the slug is already taken. This stops a re-promote / re-add of
+    // the same address from wiping DCAS/MAC/IPAD.
+    let n = 2;
+    while ((await db.collection(COLLECTION).doc(docId).get()).exists) docId = `${base}-${n++}`;
+  } else {
+    // Explicit id that already exists → snapshot it first so it's recoverable.
+    const existing = await db.collection(COLLECTION).doc(docId).get();
+    if (existing.exists) {
+      const data = existing.data() as Omit<Property, "id">;
+      await db.collection(SNAPSHOTS).add({ propertyId: docId, name: data.name ?? docId, reason: "overwrite", takenAt: now(), data });
+    }
   }
   await db.collection(COLLECTION).doc(docId).set(record);
   return docId;
