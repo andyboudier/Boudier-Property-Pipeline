@@ -231,11 +231,23 @@ export function ProspectsBoard({ initialLeads, initialWatch }: { initialLeads: L
       {promoted.length > 0 && (
         <section>
           <h2 className="mb-2 font-serif text-sm uppercase tracking-wide text-ink-muted">Promoted ({promoted.length})</h2>
+          <p className="mb-2 -mt-1 text-[11px] text-ink-muted">Removing one only clears the prospect entry — the pipeline site it points to is untouched.</p>
           <div className="flex flex-wrap gap-2">
             {promoted.map((l) => (
-              <Link key={l.id} href={l.promotedPropertyId ? `/property/${l.promotedPropertyId}` : "/"} className="rounded-full border border-paper-line bg-white px-3 py-1 text-xs text-ink-soft hover:border-bronze">
-                {l.name} →
-              </Link>
+              <span key={l.id} className="inline-flex items-center gap-1 rounded-full border border-paper-line bg-white pl-3 pr-1.5 py-1 text-xs text-ink-soft hover:border-bronze">
+                <Link href={l.promotedPropertyId ? `/property/${l.promotedPropertyId}` : "/"} className="hover:text-bronze-dark">
+                  {l.name} →
+                </Link>
+                <button
+                  onClick={() => remove(l)}
+                  disabled={pending}
+                  title="Remove this prospect entry"
+                  aria-label={`Remove prospect ${l.name}`}
+                  className="text-ink-muted hover:text-status-stop disabled:opacity-50"
+                >
+                  ✕
+                </button>
+              </span>
             ))}
           </div>
         </section>
