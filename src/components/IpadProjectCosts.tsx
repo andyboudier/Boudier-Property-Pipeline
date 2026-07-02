@@ -155,14 +155,14 @@ function Pct({ label, k, inp, out, set, setOverride, of }: { label: string; k: k
   const isFixed = typeof override === "number";
   const computed = out.feeAmounts[k as string] ?? 0;
   const pctVal = (inp[k] as number) || 0;
-  const tBtn = (active: boolean) => `px-2 py-1 text-[11px] font-bold transition ${active ? "bg-ink text-white" : "bg-paper-line text-ink hover:bg-bronze/30"}`;
+  const tBtn = (active: boolean) => `px-2 py-1 text-[11px] font-bold transition ${active ? "bg-ink text-white" : "bg-white text-bronze-dark hover:bg-bronze/15"}`;
   return (
     <tr className="border-t border-paper-line/70">
       <Td>{label}</Td>
       <CostCell value={isFixed ? (override as number) : computed} />
       <td className="px-4 py-1.5">
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-flex overflow-hidden rounded border border-paper-line">
+          <span className="inline-flex overflow-hidden rounded-md border border-ink/30">
             <button type="button" className={tBtn(!isFixed)} onClick={() => setOverride(k as string, null)} title="Calculate as a percentage">%</button>
             <button type="button" className={tBtn(isFixed)} onClick={() => setOverride(k as string, computed)} title="Enter a fixed £ amount instead">£</button>
           </span>
@@ -191,14 +191,14 @@ function Bridge({ label, monthsK, rateK, inp, value, set, setOverride }: { label
   const rate = (inp[rateK] as number) || 0;
   const override = inp.overrides?.[rateK as string];
   const isFixed = typeof override === "number";
-  const tBtn = (active: boolean) => `px-2 py-1 text-[11px] font-bold transition ${active ? "bg-ink text-white" : "bg-paper-line text-ink hover:bg-bronze/30"}`;
+  const tBtn = (active: boolean) => `px-2 py-1 text-[11px] font-bold transition ${active ? "bg-ink text-white" : "bg-white text-bronze-dark hover:bg-bronze/15"}`;
   return (
     <tr className="border-t border-paper-line/70">
       <Td>{isFixed ? `${label} (fixed £)` : `${label} for ${months} months @ ${+(rate * 100).toFixed(3)}% per month`}</Td>
       <CostCell value={value} />
       <td className="px-4 py-1.5">
         <span className="inline-flex flex-wrap items-center gap-1.5">
-          <span className="inline-flex overflow-hidden rounded border border-paper-line">
+          <span className="inline-flex overflow-hidden rounded-md border border-ink/30">
             <button type="button" className={tBtn(!isFixed)} onClick={() => setOverride(rateK as string, null)} title="Calculate as a percentage">%</button>
             <button type="button" className={tBtn(isFixed)} onClick={() => setOverride(rateK as string, value)} title="Enter a fixed £ amount instead">£</button>
           </span>
