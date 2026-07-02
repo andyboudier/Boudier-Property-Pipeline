@@ -69,10 +69,10 @@ export function IpadProjectCosts({ inp, out, set, setOverride }: { inp: IpadInpu
             {/* ── Finance Costs - Purchase ── */}
             <Sub label="Finance Costs - Purchase" />
             <Money label="Private Finance" k="privateFinance" inp={inp} set={set} />
-            <Bridge label="Purchase Private Finance Cost" monthsK="privateFinanceMonths" rateK="privateFinanceRatePerMonth" inp={inp} value={fa.privateFinanceRatePerMonth ?? 0} set={set} />
+            <Bridge label="Purchase Private Finance Cost" monthsK="privateFinanceMonths" rateK="privateFinanceRatePerMonth" inp={inp} value={fa.privateFinanceRatePerMonth ?? 0} set={set} setOverride={setOverride} />
             <Computed label="Cost of Private Finance" value={fa.privateFinanceRatePerMonth ?? 0} />
             <Computed label="Commercial Finance" value={commercialFinance} comment="Commercial Finance" />
-            <Bridge label="Purchase Bridging Cost" monthsK="commBridgeMonths" rateK="commBridgeRatePerMonth" inp={inp} value={fa.commBridgeRatePerMonth ?? 0} set={set} />
+            <Bridge label="Purchase Bridging Cost" monthsK="commBridgeMonths" rateK="commBridgeRatePerMonth" inp={inp} value={fa.commBridgeRatePerMonth ?? 0} set={set} setOverride={setOverride} />
             <Pct label="Broker Fee" k="commBrokerPct" inp={inp} out={out} set={set} setOverride={setOverride} of="of Commercial Finance" />
             <Pct label="Lender Admin Fee" k="commAdminPct" inp={inp} out={out} set={set} setOverride={setOverride} of="of Commercial Finance" />
             <Money label="Lender Valuation Fee" k="commValuation" inp={inp} set={set} comment="TBC" />
@@ -83,7 +83,7 @@ export function IpadProjectCosts({ inp, out, set, setOverride }: { inp: IpadInpu
             {/* ── Finance Costs - Development ── */}
             <Sub label="Finance Costs - Development" />
             <Computed label="Development Loan" value={out.totalConstruction} comment="Commercial Finance" />
-            <Bridge label="Development Bridging Cost" monthsK="devBridgeMonths" rateK="devBridgeRatePerMonth" inp={inp} value={fa.devBridgeRatePerMonth ?? 0} set={set} />
+            <Bridge label="Development Bridging Cost" monthsK="devBridgeMonths" rateK="devBridgeRatePerMonth" inp={inp} value={fa.devBridgeRatePerMonth ?? 0} set={set} setOverride={setOverride} />
             <Pct label="Broker Fee" k="devBrokerPct" inp={inp} out={out} set={set} setOverride={setOverride} of="of Development Loan" />
             <Pct label="Lender Admin Fee" k="devAdminPct" inp={inp} out={out} set={set} setOverride={setOverride} of="of Development Loan" />
             <Money label="Lender Valuation Fee" k="devValuation" inp={inp} set={set} comment="TBC" />
@@ -186,19 +186,32 @@ function Pct({ label, k, inp, out, set, setOverride, of }: { label: string; k: k
   );
 }
 
-function Bridge({ label, monthsK, rateK, inp, value, set }: { label: string; monthsK: keyof IpadInputs; rateK: keyof IpadInputs; inp: IpadInputs; value: number; set: SetFn }) {
+function Bridge({ label, monthsK, rateK, inp, value, set, setOverride }: { label: string; monthsK: keyof IpadInputs; rateK: keyof IpadInputs; inp: IpadInputs; value: number; set: SetFn; setOverride: OverrideFn }) {
   const months = (inp[monthsK] as number) || 0;
   const rate = (inp[rateK] as number) || 0;
+  const override = inp.overrides?.[rateK as string];
+  const isFixed = typeof override === "number";
+  const tBtn = (active: boolean) => `px-1.5 py-0.5 text-[10px] font-semibold ${active ? "bg-ink text-white" : "bg-white text-ink-muted hover:text-ink"}`;
   return (
     <tr className="border-t border-paper-line/70">
-      <Td>{`${label} for ${months} months @ ${+(rate * 100).toFixed(3)}% per month`}</Td>
+      <Td>{isFixed ? `${label} (fixed £)` : `${label} for ${months} months @ ${+(rate * 100).toFixed(3)}% per month`}</Td>
       <CostCell value={value} />
       <td className="px-4 py-1.5">
         <span className="inline-flex flex-wrap items-center gap-1.5">
-          <input type="number" className="field-sm w-16 tabular-nums" value={months} onChange={(e) => set(monthsK, (Number(e.target.value) || 0) as IpadInputs[typeof monthsK])} />
-          <span className="text-xs text-ink-muted">months @</span>
-          <input type="number" step="0.1" className="field-sm w-16 tabular-nums" value={+(rate * 100).toFixed(3)} onChange={(e) => set(rateK, ((Number(e.target.value) || 0) / 100) as IpadInputs[typeof rateK])} />
-          <span className="text-xs text-ink-muted">% interest</span>
+          <span className="inline-flex overflow-hidden rounded border border-paper-line">
+            <button type="button" className={tBtn(!isFixed)} onClick={() => setOverride(rateK as string, null)}>%</button>
+            <button type="button" className={tBtn(isFixed)} onClick={() => setOverride(rateK as string, value)}>£</button>
+          </span>
+          {isFixed ? (
+            <input type="number" className="field-sm w-28 tabular-nums" value={override as number} onChange={(e) => setOverride(rateK as string, Number(e.target.value) || 0)} />
+          ) : (
+            <>
+              <input type="number" className="field-sm w-16 tabular-nums" value={months} onChange={(e) => set(monthsK, (Number(e.target.value) || 0) as IpadInputs[typeof monthsK])} />
+              <span className="text-xs text-ink-muted">months @</span>
+              <input type="number" step="0.1" className="field-sm w-16 tabular-nums" value={+(rate * 100).toFixed(3)} onChange={(e) => set(rateK, ((Number(e.target.value) || 0) / 100) as IpadInputs[typeof rateK])} />
+              <span className="text-xs text-ink-muted">% interest</span>
+            </>
+          )}
         </span>
       </td>
     </tr>
