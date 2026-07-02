@@ -162,7 +162,7 @@ function Pct({ label, k, inp, out, set, setOverride, of }: { label: string; k: k
       <CostCell value={isFixed ? (override as number) : computed} />
       <td className="px-4 py-1.5">
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-flex overflow-hidden rounded-md border border-ink/30">
+          <span className="inline-flex shrink-0 overflow-hidden rounded-md border border-ink/30">
             <button type="button" className={tBtn(!isFixed)} onClick={() => setOverride(k as string, null)} title="Calculate as a percentage">%</button>
             <button type="button" className={tBtn(isFixed)} onClick={() => setOverride(k as string, computed)} title="Enter a fixed £ amount instead">£</button>
           </span>
@@ -198,7 +198,7 @@ function Bridge({ label, monthsK, rateK, inp, value, set, setOverride }: { label
       <CostCell value={value} />
       <td className="px-4 py-1.5">
         <span className="inline-flex flex-wrap items-center gap-1.5">
-          <span className="inline-flex overflow-hidden rounded-md border border-ink/30">
+          <span className="inline-flex shrink-0 overflow-hidden rounded-md border border-ink/30">
             <button type="button" className={tBtn(!isFixed)} onClick={() => setOverride(rateK as string, null)} title="Calculate as a percentage">%</button>
             <button type="button" className={tBtn(isFixed)} onClick={() => setOverride(rateK as string, value)} title="Enter a fixed £ amount instead">£</button>
           </span>
