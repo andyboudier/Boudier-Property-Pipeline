@@ -45,9 +45,18 @@ export function RecoverList({ snapshots }: { snapshots: PropertySnapshot[] }) {
         <div key={s.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <div className="font-medium text-ink">{s.name}</div>
-            <div className="text-xs text-ink-muted">
-              {s.data.town || "—"}
-              {s.data.guidePrice != null ? ` · ${gbp(s.data.guidePrice)}` : ""} · deleted {formatWhen(s.takenAt)}
+            <div className="flex flex-wrap items-center gap-1.5 text-xs text-ink-muted">
+              <span>
+                {s.data.town || "—"}
+                {s.data.guidePrice != null ? ` · ${gbp(s.data.guidePrice)}` : ""}
+              </span>
+              <span
+                className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase"
+                style={{ background: `${reasonMeta(s.reason).color}1A`, color: reasonMeta(s.reason).color }}
+              >
+                {reasonMeta(s.reason).label}
+              </span>
+              <span>{formatWhen(s.takenAt)}</span>
             </div>
           </div>
           <div className="flex shrink-0 gap-2">
@@ -66,6 +75,21 @@ export function RecoverList({ snapshots }: { snapshots: PropertySnapshot[] }) {
       ))}
     </div>
   );
+}
+
+function reasonMeta(reason: string): { label: string; color: string } {
+  switch (reason) {
+    case "delete":
+      return { label: "Deleted", color: "#B23A48" };
+    case "overwrite":
+      return { label: "Before overwrite", color: "#C2872B" };
+    case "pre-restore":
+      return { label: "Before restore", color: "#4F6D7A" };
+    case "auto":
+      return { label: "Auto backup", color: "#2E7D5B" };
+    default:
+      return { label: reason || "Snapshot", color: "#8A8F94" };
+  }
 }
 
 function formatWhen(iso: string): string {

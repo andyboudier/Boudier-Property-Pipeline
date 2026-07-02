@@ -11,10 +11,11 @@ export default async function RecoverPage() {
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
         <Link href="/" className="text-xs text-ink-muted hover:text-bronze-dark">← Pipeline</Link>
-        <h1 className="mt-2 font-serif text-2xl text-ink">Recently deleted</h1>
+        <h1 className="mt-2 font-serif text-2xl text-ink">Backups & recovery</h1>
         <p className="text-sm text-ink-muted">
-          Sites are snapshotted when deleted. Restore one to bring it back with its DCAS / MAC / IPAD data intact, or
-          remove it permanently.
+          The last 100 snapshots are kept automatically: an auto backup is taken before changes land (at most every 30
+          minutes per site), plus snapshots on delete, overwrite and restore. Restoring brings back the full site —
+          DCAS / MAC / IPAD included — and the current state is snapshotted first, so restores are always reversible.
         </p>
       </div>
       <RecoverList snapshots={snapshots} />

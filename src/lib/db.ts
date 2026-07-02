@@ -40,6 +40,48 @@ const stripUndefined = <T,>(o: T): T => JSON.parse(JSON.stringify(o));
 
 export const usingFirestore = isFirestoreConfigured();
 
+// ── Rolling snapshot backups ──────────────────────────────────────────────────
+// Every meaningful change to a property stores a point-in-time copy of its
+// PREVIOUS state (throttled to one per property per interval), alongside the
+// delete / overwrite / pre-restore snapshots. The pool is capped: oldest are
+// pruned beyond SNAPSHOT_CAP, and everything is restorable from /recover.
+const SNAPSHOT_CAP = 100;
+const AUTO_SNAPSHOT_INTERVAL_MS = 30 * 60_000; // at most one auto-backup per property per 30 min
+
+// Fields whose changes are too trivial to burn a backup on (scan bookkeeping).
+const SNAPSHOT_SKIP_KEYS = new Set([
+  "marketStatus",
+  "alert",
+  "statusCheckedAt",
+  "updatedAt",
+  "lastAutoSnapshotAt",
+  "documentsUrl",
+]);
+const isMeaningfulPatch = (patch: Record<string, unknown>) =>
+  Object.keys(patch).some((k) => !SNAPSHOT_SKIP_KEYS.has(k));
+
+/** Store a snapshot and prune the pool to SNAPSHOT_CAP (oldest first). */
+async function pushSnapshot(propertyId: string, name: string, reason: string, data: Omit<Property, "id">): Promise<void> {
+  const db = getDb();
+  if (!db) {
+    memSnapshots().unshift({ id: `snap-${Date.now()}-${memSnapshots().length}`, propertyId, name, reason, takenAt: now(), data: stripUndefined(data) });
+    if (memSnapshots().length > SNAPSHOT_CAP) memSnapshots().splice(SNAPSHOT_CAP);
+    return;
+  }
+  await db.collection(SNAPSHOTS).add(stripUndefined({ propertyId, name: name || propertyId, reason, takenAt: now(), data }));
+  // Prune anything beyond the newest SNAPSHOT_CAP.
+  try {
+    const overflow = await db.collection(SNAPSHOTS).orderBy("takenAt", "desc").offset(SNAPSHOT_CAP).get();
+    if (!overflow.empty) {
+      const batch = db.batch();
+      overflow.docs.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+  } catch (e) {
+    console.error("snapshot prune failed:", e);
+  }
+}
+
 // ── Properties ───────────────────────────────────────────────────────────────
 export async function listProperties(): Promise<Property[]> {
   const db = getDb();
@@ -69,7 +111,7 @@ export async function createProperty(p: Omit<Property, "id">, id?: string): Prom
     } else if (memStore().has(docId)) {
       const cur = memStore().get(docId)!;
       const { id: _omit, ...data } = cur;
-      memSnapshots().unshift({ id: `snap-${Date.now()}-${memSnapshots().length}`, propertyId: docId, name: cur.name, reason: "overwrite", takenAt: now(), data });
+      await pushSnapshot(docId, cur.name, "overwrite", data);
     }
     memStore().set(docId, { id: docId, ...record } as Property);
     return docId;
@@ -86,7 +128,7 @@ export async function createProperty(p: Omit<Property, "id">, id?: string): Prom
     const existing = await db.collection(COLLECTION).doc(docId).get();
     if (existing.exists) {
       const data = existing.data() as Omit<Property, "id">;
-      await db.collection(SNAPSHOTS).add({ propertyId: docId, name: data.name ?? docId, reason: "overwrite", takenAt: now(), data });
+      await pushSnapshot(docId, data.name ?? docId, "overwrite", data);
     }
   }
   await db.collection(COLLECTION).doc(docId).set(record);
@@ -95,12 +137,41 @@ export async function createProperty(p: Omit<Property, "id">, id?: string): Prom
 
 export async function updateProperty(id: string, patch: Partial<Property>): Promise<void> {
   const db = getDb();
-  const clean = stripUndefined({ ...patch, updatedAt: now() });
+  const clean: Partial<Property> = stripUndefined({ ...patch, updatedAt: now() });
+
   if (!db) {
     const cur = memStore().get(id);
-    if (cur) memStore().set(id, { ...cur, ...clean } as Property);
+    if (!cur) return;
+    if (isMeaningfulPatch(patch)) {
+      const due = !cur.lastAutoSnapshotAt || Date.now() - new Date(cur.lastAutoSnapshotAt).getTime() > AUTO_SNAPSHOT_INTERVAL_MS;
+      if (due) {
+        const { id: _omit, ...data } = cur;
+        await pushSnapshot(id, cur.name, "auto", data);
+        clean.lastAutoSnapshotAt = now();
+      }
+    }
+    memStore().set(id, { ...cur, ...clean } as Property);
     return;
   }
+
+  // Auto-backup: before a meaningful change lands, capture the property's
+  // previous state (at most once per AUTO_SNAPSHOT_INTERVAL_MS per property).
+  if (isMeaningfulPatch(patch)) {
+    try {
+      const doc = await db.collection(COLLECTION).doc(id).get();
+      if (doc.exists) {
+        const cur = doc.data() as Omit<Property, "id">;
+        const due = !cur.lastAutoSnapshotAt || Date.now() - new Date(cur.lastAutoSnapshotAt).getTime() > AUTO_SNAPSHOT_INTERVAL_MS;
+        if (due) {
+          await pushSnapshot(id, cur.name ?? id, "auto", cur);
+          clean.lastAutoSnapshotAt = now();
+        }
+      }
+    } catch (e) {
+      console.error("auto snapshot failed:", e); // never block the save itself
+    }
+  }
+
   await db.collection(COLLECTION).doc(id).set(clean, { merge: true });
 }
 
@@ -110,7 +181,7 @@ export async function deleteProperty(id: string): Promise<void> {
     const cur = memStore().get(id);
     if (cur) {
       const { id: _omit, ...data } = cur;
-      memSnapshots().unshift({ id: `snap-${Date.now()}-${memSnapshots().length}`, propertyId: id, name: cur.name, reason: "delete", takenAt: now(), data });
+      await pushSnapshot(id, cur.name, "delete", data);
       memStore().delete(id);
     }
     return;
@@ -119,7 +190,7 @@ export async function deleteProperty(id: string): Promise<void> {
   const doc = await db.collection(COLLECTION).doc(id).get();
   if (doc.exists) {
     const data = doc.data() as Omit<Property, "id">;
-    await db.collection(SNAPSHOTS).add({ propertyId: id, name: data.name ?? id, reason: "delete", takenAt: now(), data });
+    await pushSnapshot(id, data.name ?? id, "delete", data);
   }
   await db.collection(COLLECTION).doc(id).delete();
 }
@@ -132,13 +203,20 @@ export async function listSnapshots(): Promise<PropertySnapshot[]> {
   return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<PropertySnapshot, "id">) }));
 }
 
-/** Re-create the property from a snapshot, then remove the snapshot. */
+/** Re-create the property from a snapshot, then remove the snapshot. The
+ * property's CURRENT state (if any) is snapshotted first ("pre-restore"), so a
+ * restore can never itself destroy data. */
 export async function restoreSnapshot(snapshotId: string): Promise<string | null> {
   const db = getDb();
   if (!db) {
     const idx = memSnapshots().findIndex((s) => s.id === snapshotId);
     if (idx === -1) return null;
     const [s] = memSnapshots().splice(idx, 1);
+    const cur = memStore().get(s.propertyId);
+    if (cur) {
+      const { id: _omit, ...data } = cur;
+      await pushSnapshot(s.propertyId, cur.name, "pre-restore", data);
+    }
     memStore().set(s.propertyId, { id: s.propertyId, ...s.data } as Property);
     return s.propertyId;
   }
@@ -146,6 +224,11 @@ export async function restoreSnapshot(snapshotId: string): Promise<string | null
   const doc = await ref.get();
   if (!doc.exists) return null;
   const s = doc.data() as Omit<PropertySnapshot, "id">;
+  const live = await db.collection(COLLECTION).doc(s.propertyId).get();
+  if (live.exists) {
+    const data = live.data() as Omit<Property, "id">;
+    await pushSnapshot(s.propertyId, data.name ?? s.propertyId, "pre-restore", data);
+  }
   await db.collection(COLLECTION).doc(s.propertyId).set(stripUndefined(s.data));
   await ref.delete();
   return s.propertyId;

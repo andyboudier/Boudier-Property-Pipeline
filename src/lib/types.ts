@@ -248,6 +248,7 @@ export interface Property {
   alert?: MarketAlert; // raised when the listing's market status changes
   statusCheckedAt?: string; // last time the listing was re-checked for availability
   statusOverride?: ProcedabilityStatus | null; // manual pipeline status; null/undefined = auto
+  lastAutoSnapshotAt?: string; // when the rolling auto-backup last captured this property
 
   dcas?: Dcas;
   mac?: Mac;
