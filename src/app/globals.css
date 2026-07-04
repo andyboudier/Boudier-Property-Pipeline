@@ -71,3 +71,15 @@ body {
     break-inside: avoid;
   }
 }
+
+/* Hide native number-input spinners — the up/down arrows nudge values and get
+   in the way when typing costs (IPAD etc.). Typing and paste are unaffected. */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
