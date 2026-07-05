@@ -31,7 +31,7 @@ export default async function FullReportPage({ params }: { params: { id: string 
       {/* Screen-only toolbar */}
       <div className="no-print mb-5 flex items-center justify-between">
         <Link href={`/property/${p.id}`} className="text-sm text-ink-muted hover:text-bronze-dark">← Back to overview</Link>
-        <PrintButton label="Print / Save full report as PDF" />
+        <PrintButton label="Download full report as PDF" />
       </div>
 
       <article className="print-page card px-8 py-8 print:px-0 print:py-0">
