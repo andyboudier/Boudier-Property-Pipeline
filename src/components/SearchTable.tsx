@@ -42,7 +42,7 @@ const FILTERS: { key: ProcedabilityStatus | "all"; label: string }[] = [
 
 export function SearchTable({ rows }: { rows: Row[] }) {
   const [q, setQ] = useState("");
-  const [filter, setFilter] = useState<ProcedabilityStatus | "all">("all");
+  const [filter, setFilter] = useState<ProcedabilityStatus | "all">("review"); // land on what needs attention
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -53,7 +53,49 @@ export function SearchTable({ rows }: { rows: Row[] }) {
     });
   }, [rows, q, filter]);
 
+  const counts = useMemo(
+    () => ({
+      all: rows.length,
+      proceedable: rows.filter((r) => r.status === "proceedable").length,
+      review: rows.filter((r) => r.status === "review").length,
+      "not-proceedable": rows.filter((r) => r.status === "not-proceedable").length,
+      sold: rows.filter((r) => r.status === "sold").length,
+    }),
+    [rows],
+  );
+
+  const CARDS: { key: ProcedabilityStatus | "all"; label: string; color: string }[] = [
+    { key: "all", label: "Sites", color: "#16202B" },
+    { key: "proceedable", label: "Proceedable", color: "#2E7D5B" },
+    { key: "review", label: "Review", color: "#C2872B" },
+    { key: "not-proceedable", label: "Not proceedable", color: "#B23A48" },
+    { key: "sold", label: "Sold", color: "#4F6D7A" },
+  ];
+
   return (
+    <>
+    {/* Clickable summary cards — click to filter the table below */}
+    <section className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+      {CARDS.map((c) => {
+        const active = filter === c.key;
+        return (
+          <button
+            key={c.key}
+            type="button"
+            onClick={() => setFilter(c.key)}
+            title={`Show ${c.label.toLowerCase()}`}
+            className="card p-4 text-left transition hover:shadow-md"
+            style={active ? { boxShadow: `inset 0 0 0 2px ${c.color}`, background: `${c.color}0D` } : undefined}
+          >
+            <div className="text-2xl font-semibold tabular-nums" style={{ color: c.color }}>
+              {counts[c.key as keyof typeof counts]}
+            </div>
+            <div className="text-[11px] uppercase tracking-wide text-ink-muted">{c.label}</div>
+          </button>
+        );
+      })}
+    </section>
+
     <section className="card overflow-hidden">
       <div className="flex flex-col gap-3 border-b border-paper-line p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative w-full sm:max-w-sm">
@@ -155,6 +197,7 @@ export function SearchTable({ rows }: { rows: Row[] }) {
         </table>
       </div>
     </section>
+    </>
   );
 }
 
