@@ -4,7 +4,7 @@
       "type": "http",
       "url": "https://21st.dev/api/mcp",
       "headers": {
-        "x-api-key": "${TWENTYFIRST_API_KEY}"
+        "x-api-key": "${API_KEY_21ST}"
       }
     }
   }
