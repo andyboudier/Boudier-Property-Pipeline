@@ -1,6 +1,7 @@
 import "server-only";
-import { getMonitorCriteria, addLead, leadExistsForUrl, ignoredUrlSet, getInsolvencyCursor, saveInsolvencyCursor } from "./db";
+import { getMonitorCriteria, addLead, leadExistsForUrl, ignoredUrlSet, getInsolvencyCursor, saveInsolvencyCursor, listProperties, listLeads } from "./db";
 import { matchesCriteria } from "./monitorCriteria";
+import { buildAddressKeySet, matchesKnownAddress } from "./addressMatch";
 
 // Companies House insolvency sourcing: find companies in liquidation with
 // property-sector SIC codes near the target areas, then read each company's
@@ -179,7 +180,18 @@ export async function scanInsolvency(opts: { national?: boolean } = {}): Promise
     return { ...empty, error: "COMPANIES_HOUSE_API_KEY not configured" };
   }
   const t0 = Date.now();
-  const [criteria, ignored] = await Promise.all([getMonitorCriteria(), ignoredUrlSet()]);
+  const [criteria, ignored, properties, leads] = await Promise.all([
+    getMonitorCriteria(),
+    ignoredUrlSet(),
+    listProperties(),
+    listLeads(),
+  ]);
+  // Addresses already held anywhere — pipeline sites (e.g. Express House) and
+  // existing prospects — so we never re-add a property under its CH URL.
+  const knownAddresses = buildAddressKeySet([
+    ...properties.map((p) => p.name),
+    ...leads.map((l) => l.name),
+  ]);
 
   // In national mode we ignore the geographic filter entirely — search the
   // whole UK from a rolling cursor, and match on type/keywords only (blank the
@@ -229,6 +241,8 @@ export async function scanInsolvency(opts: { national?: boolean } = {}): Promise
 
       const url = `${CH_WEB}/company/${co.number}/charges#${encodeURIComponent(prop.postcode)}`;
       if (ignored.has(url) || (await leadExistsForUrl(url).catch(() => false))) continue;
+      // Already in the pipeline or the prospect list under another source? Skip.
+      if (matchesKnownAddress(prop.address, knownAddresses)) continue;
 
       const verdict = matchesCriteria({ name: prop.address, town: "", currentUse: "", notes: "" }, matchCriteria);
       if (!verdict.include) {

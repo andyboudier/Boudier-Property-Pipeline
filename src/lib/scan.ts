@@ -15,6 +15,7 @@ import {
 } from "./db";
 import { importListing, fetchRawContent, checkMarketStatus } from "./importListing";
 import { matchesCriteria } from "./monitorCriteria";
+import { buildAddressKeySet, matchesKnownAddress } from "./addressMatch";
 
 // A URL must look like an individual listing page to be a candidate.
 const LISTING_HINT = /(\/propert(y|ies)\/|\/details\/|\/listing\/|\/unit)/i;
@@ -98,6 +99,13 @@ export async function runScan(): Promise<ScanSummary> {
     ignoredUrlSet(),
   ]);
   const knownUrls = new Set(properties.map((p) => p.listingUrl).filter(Boolean) as string[]);
+  // Addresses already held (pipeline sites + existing prospects), so a listing
+  // that turns up under a new URL for a property we already have — e.g. Express
+  // House — isn't re-added.
+  const knownAddresses = buildAddressKeySet([
+    ...properties.map((p) => p.name),
+    ...leads.map((l) => l.name),
+  ]);
 
   // ── A. Discover new prospects from watched agent pages ─────────────────────
   async function discover(): Promise<{ created: number; skipped: number; watchStats: ScanSummary["watchStats"]; examined: ScanSummary["examined"] }> {
@@ -181,6 +189,12 @@ export async function runScan(): Promise<ScanSummary> {
           const res = await importListing({ url });
           if (!res.ok || !res.fields.name) {
             examined.push({ url, name: res.fields?.name || "", ok: false, reasons: [res.blocked ? "blocked/unreadable" : "no data extracted"] });
+            return;
+          }
+          // Already in the pipeline or prospects under another URL? Skip.
+          if (matchesKnownAddress(res.fields.name, knownAddresses)) {
+            examined.push({ url, name: res.fields.name, ok: false, reasons: ["already held"] });
+            skipped++;
             return;
           }
           const verdict = matchesCriteria(res.fields, criteria);
