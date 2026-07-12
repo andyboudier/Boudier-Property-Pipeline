@@ -13,6 +13,7 @@ import {
   actionAddWatch,
   actionDeleteWatch,
   actionScanNow,
+  actionScanInsolvency,
   actionClearLeadAlert,
 } from "@/app/actions";
 import { gbp, num } from "@/lib/format";
@@ -266,6 +267,30 @@ function Watchlist({ initialWatch }: { initialWatch: WatchSource[] }) {
   const [scanning, setScanning] = useState(false);
   const [scanMsg, setScanMsg] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [insolvencyScanning, setInsolvencyScanning] = useState(false);
+
+  async function scanInsolvencies() {
+    setInsolvencyScanning(true);
+    setScanMsg(null);
+    try {
+      const r = await actionScanInsolvency();
+      if (!r.ok) {
+        setScanMsg(r.error === "COMPANIES_HOUSE_API_KEY not configured"
+          ? "Add COMPANIES_HOUSE_API_KEY in Vercel to enable insolvency scanning."
+          : "Insolvency scan failed — try again.");
+      } else {
+        setScanMsg(
+          `Insolvency scan — ${r.companiesFound} companies in liquidation found, ${r.companiesChecked} checked, ` +
+          `${r.propertiesSeen} properties identified, ${r.created} added${r.skipped.length ? `, ${r.skipped.length} outside criteria` : ""}.`,
+        );
+        router.refresh();
+      }
+    } catch {
+      setScanMsg("Insolvency scan failed — try again.");
+    } finally {
+      setInsolvencyScanning(false);
+    }
+  }
 
   async function scanNow() {
     setScanning(true);
@@ -307,9 +332,19 @@ function Watchlist({ initialWatch }: { initialWatch: WatchSource[] }) {
     <section className="card p-5">
       <div className="flex items-start justify-between gap-3">
         <h2 className="font-serif text-lg text-ink">Auto-monitor</h2>
-        <button onClick={scanNow} disabled={scanning} className="btn-bronze shrink-0 px-3 py-1.5 text-xs disabled:opacity-60">
-          {scanning ? "Scanning…" : "Scan now"}
-        </button>
+        <div className="flex shrink-0 gap-2">
+          <button
+            onClick={scanInsolvencies}
+            disabled={insolvencyScanning || scanning}
+            title="Search Companies House for liquidated property companies whose charges name a property in your target areas"
+            className="btn-ghost px-3 py-1.5 text-xs disabled:opacity-60"
+          >
+            {insolvencyScanning ? "Searching…" : "Scan insolvencies"}
+          </button>
+          <button onClick={scanNow} disabled={scanning || insolvencyScanning} className="btn-bronze px-3 py-1.5 text-xs disabled:opacity-60">
+            {scanning ? "Scanning…" : "Scan now"}
+          </button>
+        </div>
       </div>
       <p className="mt-1 text-xs text-ink-muted">
         Add an agent&apos;s search/results page. A scheduled scan reads each page and adds any new listings as prospects,

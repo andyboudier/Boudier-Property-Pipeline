@@ -261,6 +261,14 @@ export async function actionSaveCriteria(criteria: MonitorCriteria) {
   return { ok: true };
 }
 
+// ── Insolvency sourcing (Companies House) ─────────────────────────────────────
+export async function actionScanInsolvency() {
+  const { scanInsolvency } = await import("@/lib/companiesHouse");
+  const result = await scanInsolvency();
+  revalidatePath(`/prospects`);
+  return result;
+}
+
 // ── Availability monitoring (sold / back-on-market) ───────────────────────────
 export async function actionScanNow() {
   const { runScan } = await import("@/lib/scan");
