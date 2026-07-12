@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Fraunces, Inter } from "next/font/google";
 import "./globals.css";
 import { SiteHeader } from "@/components/SiteHeader";
+import { NumberInputSelectAll } from "@/components/NumberInputSelectAll";
 
 const serif = Fraunces({
   subsets: ["latin"],
@@ -20,6 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en-GB" className={`${serif.variable} ${sans.variable}`}>
       <body className="font-sans">
+        <NumberInputSelectAll />
         <SiteHeader />
         <main className="mx-auto w-full max-w-7xl px-4 pb-24 pt-6 sm:px-6">{children}</main>
       </body>
