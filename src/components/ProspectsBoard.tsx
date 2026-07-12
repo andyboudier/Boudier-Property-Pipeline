@@ -268,16 +268,29 @@ function Watchlist({ initialWatch }: { initialWatch: WatchSource[] }) {
   const [scanMsg, setScanMsg] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [insolvencyScanning, setInsolvencyScanning] = useState(false);
+  const [nationalScanning, setNationalScanning] = useState(false);
 
-  async function scanInsolvencies() {
-    setInsolvencyScanning(true);
+  async function scanInsolvencies(national = false) {
+    if (national) setNationalScanning(true);
+    else setInsolvencyScanning(true);
     setScanMsg(null);
     try {
-      const r = await actionScanInsolvency();
+      const r = await actionScanInsolvency(national ? { national: true } : undefined);
       if (!r.ok) {
         setScanMsg(r.error === "COMPANIES_HOUSE_API_KEY not configured"
           ? "Add COMPANIES_HOUSE_API_KEY in Vercel to enable insolvency scanning."
           : "Insolvency scan failed — try again.");
+      } else if (r.mode === "national") {
+        const covered = r.totalNational
+          ? `companies ${(r.windowStart ?? 0) + 1}–${r.windowEnd ?? 0} of ${r.totalNational.toLocaleString()}`
+          : `${r.companiesChecked} companies`;
+        const wrapped = r.totalNational && (r.windowEnd ?? 0) >= r.totalNational;
+        setScanMsg(
+          `UK-wide sweep — checked ${covered}, ${r.propertiesSeen} properties, ${r.created} added` +
+          `${r.skipped.length ? `, ${r.skipped.length} filtered out` : ""}. ` +
+          (wrapped ? "Reached the end — the next run starts again from the top." : "Run again to continue through the rest."),
+        );
+        router.refresh();
       } else {
         setScanMsg(
           `Insolvency scan — ${r.companiesFound} companies in liquidation found, ${r.companiesChecked} checked, ` +
@@ -289,6 +302,7 @@ function Watchlist({ initialWatch }: { initialWatch: WatchSource[] }) {
       setScanMsg("Insolvency scan failed — try again.");
     } finally {
       setInsolvencyScanning(false);
+      setNationalScanning(false);
     }
   }
 
@@ -332,16 +346,24 @@ function Watchlist({ initialWatch }: { initialWatch: WatchSource[] }) {
     <section className="card p-5">
       <div className="flex items-start justify-between gap-3">
         <h2 className="font-serif text-lg text-ink">Auto-monitor</h2>
-        <div className="flex shrink-0 gap-2">
+        <div className="flex shrink-0 flex-wrap justify-end gap-2">
           <button
-            onClick={scanInsolvencies}
-            disabled={insolvencyScanning || scanning}
+            onClick={() => scanInsolvencies(false)}
+            disabled={insolvencyScanning || nationalScanning || scanning}
             title="Search Companies House for liquidated property companies whose charges name a property in your target areas"
             className="btn-ghost px-3 py-1.5 text-xs disabled:opacity-60"
           >
             {insolvencyScanning ? "Searching…" : "Scan insolvencies"}
           </button>
-          <button onClick={scanNow} disabled={scanning || insolvencyScanning} className="btn-bronze px-3 py-1.5 text-xs disabled:opacity-60">
+          <button
+            onClick={() => scanInsolvencies(true)}
+            disabled={insolvencyScanning || nationalScanning || scanning}
+            title="Search Companies House UK-wide, ignoring the target areas — pages through all liquidated property companies 500 at a time (type/keyword filters still apply)"
+            className="btn-ghost px-3 py-1.5 text-xs disabled:opacity-60"
+          >
+            {nationalScanning ? "Searching UK…" : "Scan UK-wide"}
+          </button>
+          <button onClick={scanNow} disabled={scanning || insolvencyScanning || nationalScanning} className="btn-bronze px-3 py-1.5 text-xs disabled:opacity-60">
             {scanning ? "Scanning…" : "Scan now"}
           </button>
         </div>

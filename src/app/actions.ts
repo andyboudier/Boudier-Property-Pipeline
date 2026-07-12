@@ -262,9 +262,9 @@ export async function actionSaveCriteria(criteria: MonitorCriteria) {
 }
 
 // ── Insolvency sourcing (Companies House) ─────────────────────────────────────
-export async function actionScanInsolvency() {
+export async function actionScanInsolvency(opts?: { national?: boolean }) {
   const { scanInsolvency } = await import("@/lib/companiesHouse");
-  const result = await scanInsolvency();
+  const result = await scanInsolvency(opts);
   revalidatePath(`/prospects`);
   return result;
 }

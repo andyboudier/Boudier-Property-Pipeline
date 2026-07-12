@@ -1,5 +1,5 @@
 import "server-only";
-import { getMonitorCriteria, addLead, leadExistsForUrl, ignoredUrlSet } from "./db";
+import { getMonitorCriteria, addLead, leadExistsForUrl, ignoredUrlSet, getInsolvencyCursor, saveInsolvencyCursor } from "./db";
 import { matchesCriteria } from "./monitorCriteria";
 
 // Companies House insolvency sourcing: find companies in liquidation with
@@ -79,6 +79,39 @@ async function searchLiquidationCompanies(areas: string[]): Promise<ChCompany[]>
   return [...seen.values()];
 }
 
+const SIC_PARAM = SIC_CODES.map((s) => `&sic_codes=${s}`).join("");
+
+/** UK-wide (area-ignoring) search: page through liquidation property companies
+ * from `startIndex`, returning up to `count` and the national total. */
+async function searchLiquidationNational(startIndex: number, count: number): Promise<{ companies: ChCompany[]; total: number }> {
+  const companies: ChCompany[] = [];
+  let total = 0;
+  const PAGE = 100;
+  for (let idx = startIndex; companies.length < count; idx += PAGE) {
+    const size = Math.min(PAGE, count - companies.length);
+    try {
+      const res = await chFetch(`/advanced-search/companies?company_status=liquidation${SIC_PARAM}&size=${size}&start_index=${idx}`);
+      if (!res.ok) break;
+      const j = await res.json();
+      total = j.hits ?? total;
+      const items = j.items ?? [];
+      if (items.length === 0) break; // ran past the end
+      for (const it of items) {
+        if (!it.company_number) continue;
+        companies.push({
+          number: it.company_number,
+          name: it.company_name ?? it.company_number,
+          status: it.company_status ?? "liquidation",
+          officePostcode: it.registered_office_address?.postal_code ?? "",
+        });
+      }
+    } catch {
+      break;
+    }
+  }
+  return { companies, total };
+}
+
 interface ChCharge {
   code: string;
   status: string;
@@ -126,21 +159,50 @@ function extractProperty(desc: string): { address: string; postcode: string; tit
 export interface InsolvencyScanResult {
   ok: boolean;
   error?: string;
+  mode: "areas" | "national";
   companiesFound: number;
   companiesChecked: number;
   propertiesSeen: number;
   created: number;
   skipped: { property: string; company: string; reasons: string[] }[];
   leads: { property: string; company: string }[];
+  // National sweep progress (undefined for the areas mode).
+  windowStart?: number;
+  windowEnd?: number;
+  totalNational?: number;
 }
 
-export async function scanInsolvency(): Promise<InsolvencyScanResult> {
+export async function scanInsolvency(opts: { national?: boolean } = {}): Promise<InsolvencyScanResult> {
+  const mode = opts.national ? "national" : "areas";
+  const empty: InsolvencyScanResult = { ok: false, mode, companiesFound: 0, companiesChecked: 0, propertiesSeen: 0, created: 0, skipped: [], leads: [] };
   if (!isCompaniesHouseConfigured()) {
-    return { ok: false, error: "COMPANIES_HOUSE_API_KEY not configured", companiesFound: 0, companiesChecked: 0, propertiesSeen: 0, created: 0, skipped: [], leads: [] };
+    return { ...empty, error: "COMPANIES_HOUSE_API_KEY not configured" };
   }
   const t0 = Date.now();
   const [criteria, ignored] = await Promise.all([getMonitorCriteria(), ignoredUrlSet()]);
-  const companies = await searchLiquidationCompanies(criteria.areas);
+
+  // In national mode we ignore the geographic filter entirely — search the
+  // whole UK from a rolling cursor, and match on type/keywords only (blank the
+  // areas so matchesCriteria skips its area check). Otherwise: the targeted,
+  // area-scoped search.
+  let companies: ChCompany[];
+  let windowStart = 0;
+  let windowEnd = 0;
+  let totalNational = 0;
+  const matchCriteria = opts.national ? { ...criteria, areas: [] } : criteria;
+
+  if (opts.national) {
+    windowStart = await getInsolvencyCursor();
+    const { companies: found, total } = await searchLiquidationNational(windowStart, COMPANY_CAP);
+    companies = found;
+    totalNational = total;
+    // Advance the cursor, wrapping at the end so it keeps recirculating.
+    windowEnd = windowStart + companies.length;
+    const next = total > 0 && windowEnd >= total ? 0 : windowEnd;
+    await saveInsolvencyCursor(next);
+  } else {
+    companies = await searchLiquidationCompanies(criteria.areas);
+  }
 
   let created = 0;
   let propertiesSeen = 0;
@@ -168,7 +230,7 @@ export async function scanInsolvency(): Promise<InsolvencyScanResult> {
       const url = `${CH_WEB}/company/${co.number}/charges#${encodeURIComponent(prop.postcode)}`;
       if (ignored.has(url) || (await leadExistsForUrl(url).catch(() => false))) continue;
 
-      const verdict = matchesCriteria({ name: prop.address, town: "", currentUse: "", notes: "" }, criteria);
+      const verdict = matchesCriteria({ name: prop.address, town: "", currentUse: "", notes: "" }, matchCriteria);
       if (!verdict.include) {
         skipped.push({ property: prop.address, company: co.name, reasons: verdict.reasons });
         continue;
@@ -201,5 +263,15 @@ export async function scanInsolvency(): Promise<InsolvencyScanResult> {
     }
   }
 
-  return { ok: true, companiesFound: companies.length, companiesChecked: checked, propertiesSeen, created, skipped: skipped.slice(0, 20), leads };
+  return {
+    ok: true,
+    mode,
+    companiesFound: companies.length,
+    companiesChecked: checked,
+    propertiesSeen,
+    created,
+    skipped: skipped.slice(0, 20),
+    leads,
+    ...(opts.national ? { windowStart, windowEnd, totalNational } : {}),
+  };
 }

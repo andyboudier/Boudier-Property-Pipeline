@@ -23,6 +23,7 @@ const g = globalThis as unknown as {
   __boudierCriteria?: MonitorCriteria;
   __boudierIgnored?: IgnoredUrl[];
   __boudierContacts?: Contact[];
+  __boudierInsolvencyCursor?: number;
 };
 function memStore(): Map<string, Property> {
   if (!g.__boudierStore) {
@@ -437,6 +438,25 @@ export async function saveMonitorCriteria(c: MonitorCriteria): Promise<void> {
     return;
   }
   await db.collection("config").doc("monitor").set(stripUndefined(c));
+}
+
+// Rolling cursor for the UK-wide (area-ignoring) insolvency sweep, so repeated
+// runs page through the whole national result set instead of re-checking the
+// same head every time.
+export async function getInsolvencyCursor(): Promise<number> {
+  const db = getDb();
+  if (!db) return g.__boudierInsolvencyCursor ?? 0;
+  const doc = await db.collection("config").doc("insolvencyCursor").get();
+  return doc.exists ? ((doc.data() as { start?: number }).start ?? 0) : 0;
+}
+
+export async function saveInsolvencyCursor(start: number): Promise<void> {
+  const db = getDb();
+  if (!db) {
+    g.__boudierInsolvencyCursor = start;
+    return;
+  }
+  await db.collection("config").doc("insolvencyCursor").set({ start });
 }
 
 export async function saveDcas(id: string, dcas: Dcas) {
