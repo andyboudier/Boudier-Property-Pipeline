@@ -14,8 +14,27 @@ const CH_WEB = "https://find-and-update.company-information.service.gov.uk";
 // Property / development SIC codes.
 const SIC_CODES = ["68100", "68209", "68320", "41100", "41202"];
 
-const COMPANY_CAP = 24; // charges lookups per run (rate-limit + time budget)
+// Only ~3% of liquidation companies carry a parseable property charge, so we
+// must check them all, not a shallow slice. CH allows 600 requests / 5 min;
+// fetch charges concurrently within a time budget.
+const COMPANY_CAP = 500;
+const CONCURRENCY = 10;
 const TIME_BUDGET_MS = 45_000;
+
+/** Run async work over items with a fixed worker pool. */
+async function pool<T, R>(items: T[], workers: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let i = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(workers, items.length) }, async () => {
+      while (i < items.length) {
+        const idx = i++;
+        out[idx] = await fn(items[idx]);
+      }
+    }),
+  );
+  return out;
+}
 
 export const isCompaniesHouseConfigured = () => !!process.env.COMPANIES_HOUSE_API_KEY;
 
@@ -129,10 +148,16 @@ export async function scanInsolvency(): Promise<InsolvencyScanResult> {
   const skipped: InsolvencyScanResult["skipped"] = [];
   const leads: InsolvencyScanResult["leads"] = [];
 
-  for (const co of companies.slice(0, COMPANY_CAP)) {
-    if (Date.now() - t0 > TIME_BUDGET_MS) break;
+  // Fetch every company's charges concurrently (respecting the time budget),
+  // since so few carry a property that a shallow sequential scan finds nothing.
+  const targets = companies.slice(0, COMPANY_CAP);
+  const withCharges = await pool(targets, CONCURRENCY, async (co) => {
+    if (Date.now() - t0 > TIME_BUDGET_MS) return { co, charges: [] as ChCharge[] };
     checked++;
-    const charges = await getCharges(co.number);
+    return { co, charges: await getCharges(co.number) };
+  });
+
+  for (const { co, charges } of withCharges) {
     const seenAddresses = new Set<string>(); // duplicate charges on the same property
     for (const ch of charges) {
       const prop = extractProperty(ch.description);
