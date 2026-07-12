@@ -180,7 +180,7 @@ export async function scanInsolvency(opts: { national?: boolean } = {}): Promise
     return { ...empty, error: "COMPANIES_HOUSE_API_KEY not configured" };
   }
   const t0 = Date.now();
-  const [criteria, ignored, properties, leads] = await Promise.all([
+  const [criteria, ignored, properties, existingLeads] = await Promise.all([
     getMonitorCriteria(),
     ignoredUrlSet(),
     listProperties(),
@@ -190,7 +190,7 @@ export async function scanInsolvency(opts: { national?: boolean } = {}): Promise
   // existing prospects — so we never re-add a property under its CH URL.
   const knownAddresses = buildAddressKeySet([
     ...properties.map((p) => p.name),
-    ...leads.map((l) => l.name),
+    ...existingLeads.map((l) => l.name),
   ]);
 
   // In national mode we ignore the geographic filter entirely — search the
