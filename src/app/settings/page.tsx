@@ -9,7 +9,7 @@ export default async function SettingsPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
-        <Link href="/" className="text-xs text-ink-muted hover:text-bronze-dark">← Pipeline</Link>
+        <Link href="/" className="text-xs text-ink-muted hover:text-bronze-dark">← Home</Link>
         <h1 className="mt-2 font-serif text-2xl text-ink">Procedability criteria</h1>
         <p className="text-sm text-ink-muted">
           These thresholds drive the traffic-light verdict across every site. Changes apply immediately.

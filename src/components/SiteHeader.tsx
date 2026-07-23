@@ -15,7 +15,7 @@ export async function SiteHeader() {
       <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-4 sm:px-6">
         <Wordmark />
         <nav className="flex items-center gap-1 text-sm">
-          <Link href="/" className="rounded-md px-3 py-1.5 text-ink-soft hover:bg-white hover:text-ink">
+          <Link href="/pipeline" className="rounded-md px-3 py-1.5 text-ink-soft hover:bg-white hover:text-ink">
             Pipeline
           </Link>
           <Link href="/prospects" className="rounded-md px-3 py-1.5 text-ink-soft hover:bg-white hover:text-ink">
@@ -23,6 +23,9 @@ export async function SiteHeader() {
           </Link>
           <Link href="/contacts" className="rounded-md px-3 py-1.5 text-ink-soft hover:bg-white hover:text-ink">
             Contacts
+          </Link>
+          <Link href="/projects" className="rounded-md px-3 py-1.5 text-ink-soft hover:bg-white hover:text-ink">
+            Projects
           </Link>
           <Link href="/property/new" className="rounded-md px-3 py-1.5 text-ink-soft hover:bg-white hover:text-ink">
             Add site

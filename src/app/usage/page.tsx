@@ -14,7 +14,7 @@ export default async function UsagePage() {
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/" className="text-xs text-ink-muted hover:text-bronze-dark">← Pipeline</Link>
+        <Link href="/" className="text-xs text-ink-muted hover:text-bronze-dark">← Home</Link>
         <h1 className="mt-2 font-serif text-2xl text-ink">Usage & limits</h1>
         <p className="text-sm text-ink-muted">
           Live where each service exposes it; otherwise the plan limits with a link to the provider&apos;s own dashboard.

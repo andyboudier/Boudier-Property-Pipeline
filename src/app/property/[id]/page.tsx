@@ -55,7 +55,7 @@ export default async function PropertyOverview({ params }: { params: { id: strin
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/" className="text-xs text-ink-muted hover:text-bronze-dark">← Pipeline</Link>
+        <Link href="/pipeline" className="text-xs text-ink-muted hover:text-bronze-dark">← Pipeline</Link>
         <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-4">
             {p.imageUrl && (

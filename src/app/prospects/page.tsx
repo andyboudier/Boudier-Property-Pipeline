@@ -10,7 +10,7 @@ export default async function ProspectsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/" className="text-xs text-ink-muted hover:text-bronze-dark">← Pipeline</Link>
+        <Link href="/" className="text-xs text-ink-muted hover:text-bronze-dark">← Home</Link>
         <h1 className="mt-2 font-serif text-2xl text-ink">Prospects</h1>
         <p className="text-sm text-ink-muted">
           Pre-pipeline. Paste a listing URL and AI reads the page into a prospect; review it, then promote to the pipeline.

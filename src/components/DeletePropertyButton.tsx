@@ -15,7 +15,7 @@ export function DeletePropertyButton({ id, name }: { id: string; name: string })
     if (!ok) return;
     startTransition(async () => {
       await actionDeleteProperty(id);
-      router.push("/");
+      router.push("/pipeline");
       router.refresh();
     });
   }

@@ -83,3 +83,118 @@ input[type="number"] {
   -moz-appearance: textfield;
   appearance: textfield;
 }
+
+/* ---- Home screen (section chooser) — mirrors the ACT Halo app, Boudier skin */
+.home-wrap { position: relative; }
+.home-bg {
+  position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(640px 460px at 10% -6%, rgba(176, 141, 87, 0.14), transparent 60%),
+    radial-gradient(560px 480px at 100% 6%, rgba(46, 125, 91, 0.08), transparent 55%),
+    radial-gradient(700px 560px at 50% 120%, rgba(22, 32, 43, 0.06), transparent 60%);
+}
+.home-name {
+  background: linear-gradient(90deg, var(--bronze, #B08D57), #8C6E40);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 18px;
+}
+.home-card {
+  --c: #B08D57;
+  position: relative; overflow: hidden; isolation: isolate;
+  display: flex; flex-direction: column;
+  background: #fff;
+  border: 1px solid var(--paper-line, #E7E4DE);
+  border-radius: 18px;
+  padding: 22px 22px 20px;
+  min-height: 172px;
+  color: var(--ink, #16202B);
+  transition: transform .22s cubic-bezier(.2,.75,.3,1), border-color .22s, box-shadow .22s;
+  animation: home-rise .5s both;
+}
+.home-card::before {
+  content: ""; position: absolute; inset: 0 0 auto 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--c), transparent);
+  opacity: .4; transition: opacity .22s;
+}
+.home-glow {
+  position: absolute; top: -40px; right: -40px; width: 150px; height: 150px; z-index: -1;
+  background: radial-gradient(circle, var(--c) 0%, transparent 68%);
+  opacity: .10; transition: opacity .22s, transform .22s;
+}
+.home-card:hover {
+  transform: translateY(-5px);
+  border-color: color-mix(in srgb, var(--c) 45%, #E7E4DE);
+  box-shadow: 0 18px 34px -18px rgba(22, 32, 43, .35);
+}
+.home-card:hover::before { opacity: .95; }
+.home-card:hover .home-glow { opacity: .2; transform: scale(1.15); }
+.home-card:active { transform: translateY(-2px) scale(.995); }
+.home-ic {
+  width: 52px; height: 52px; border-radius: 15px;
+  display: grid; place-items: center; margin-bottom: 14px;
+  color: var(--c);
+  background: color-mix(in srgb, var(--c) 12%, #fff);
+  border: 1px solid color-mix(in srgb, var(--c) 32%, #E7E4DE);
+  transition: transform .22s, box-shadow .22s;
+}
+.home-ic svg { width: 27px; height: 27px; }
+.home-card:hover .home-ic { transform: translateY(-1px) scale(1.04); box-shadow: 0 10px 22px -10px color-mix(in srgb, var(--c) 60%, transparent); }
+.home-label { font-family: var(--font-serif), Georgia, serif; font-size: 19px; font-weight: 600; color: var(--ink, #16202B); }
+.home-desc { font-size: 13px; color: #5B6976; margin-top: 4px; line-height: 1.5; max-width: 30ch; }
+.home-count {
+  margin-top: auto; padding-top: 12px;
+  font-size: 11.5px; font-weight: 600; color: var(--c);
+}
+.home-go { position: absolute; right: 18px; bottom: 16px; color: var(--c); opacity: .45; transition: opacity .22s, transform .22s; }
+.home-go svg { width: 20px; height: 20px; display: block; }
+.home-card:hover .home-go { opacity: 1; transform: translateX(3px); }
+@keyframes home-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+
+/* ---- Welcome splash (plays once per session) ---- */
+.splash {
+  position: fixed; inset: 0; z-index: 999;
+  display: grid; place-items: center;
+  background: radial-gradient(60% 60% at 50% 42%, #23343f 0%, #16202B 72%), #16202B;
+  transition: opacity .55s ease;
+  cursor: pointer;
+}
+.splash.out { opacity: 0; pointer-events: none; }
+.splash-inner { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; }
+.splash-glow {
+  position: absolute; top: -70px; width: 340px; height: 340px; border-radius: 50%; z-index: 0;
+  background: radial-gradient(circle, rgba(176,141,87,.30) 0%, rgba(46,125,91,.10) 45%, transparent 68%);
+  animation: splash-glow 2.6s ease-in-out infinite;
+}
+.splash-logo {
+  position: relative; z-index: 1; height: 72px; width: auto; border-radius: 10px;
+  filter: drop-shadow(0 10px 30px rgba(0,0,0,.55));
+  animation: splash-pop .9s cubic-bezier(.2,.85,.25,1) both;
+}
+.splash-welcome {
+  position: relative; z-index: 1; margin-top: 26px; color: #fff; font-size: 24px; font-weight: 700;
+  font-family: var(--font-serif), Georgia, serif; letter-spacing: .01em;
+  opacity: 0; animation: splash-fade .6s ease .45s forwards;
+}
+.splash-welcome span {
+  background: linear-gradient(90deg, #D9BC90, #B08D57);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.splash-sub {
+  position: relative; z-index: 1; color: rgba(255,255,255,.55); font-size: 12px; margin-top: 8px;
+  text-transform: uppercase; letter-spacing: .25em;
+  opacity: 0; animation: splash-fade .6s ease .7s forwards;
+}
+.splash-bar { position: relative; z-index: 1; margin-top: 24px; width: 180px; height: 3px; background: rgba(255,255,255,.12); border-radius: 3px; overflow: hidden; }
+.splash-bar i { display: block; height: 100%; width: 0; border-radius: 3px; background: linear-gradient(90deg, #D9BC90, #B08D57); animation: splash-load 2s ease forwards; }
+@keyframes splash-pop { from { opacity: 0; transform: scale(.86) translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes splash-fade { to { opacity: 1; } }
+@keyframes splash-glow { 0%,100% { opacity: .5; transform: scale(.92); } 50% { opacity: 1; transform: scale(1.08); } }
+@keyframes splash-load { to { width: 100%; } }
+@media (prefers-reduced-motion: reduce) {
+  .home-card, .splash-logo, .splash-welcome, .splash-sub, .splash-bar i, .splash-glow { animation: none !important; }
+  .splash-welcome, .splash-sub { opacity: 1; }
+}
