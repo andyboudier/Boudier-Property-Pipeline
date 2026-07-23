@@ -1,8 +1,15 @@
 import Link from "next/link";
 import { Wordmark } from "./Wordmark";
 import { usingFirestore } from "@/lib/db";
+import { headers } from "next/headers";
+import { auth } from "@/auth";
+import { isAuthConfigured } from "@/lib/authConfig";
 
-export function SiteHeader() {
+export async function SiteHeader() {
+  // Don't show the app nav on the sign-in screen.
+  if (headers().get("x-pathname") === "/signin") return null;
+  const session = isAuthConfigured() ? await auth() : null;
+  const userName = session?.user?.name || session?.user?.email || null;
   return (
     <header className="no-print sticky top-0 z-40 border-b border-paper-line bg-paper-warm/85 backdrop-blur">
       <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-4 sm:px-6">
@@ -36,6 +43,15 @@ export function SiteHeader() {
             />
             {usingFirestore ? "Firestore" : "Demo data"}
           </span>
+          {userName && (
+            <a
+              href="/api/auth/signout"
+              title={`Signed in as ${userName} — sign out`}
+              className="ml-1 rounded-md px-3 py-1.5 text-ink-soft hover:bg-white hover:text-bronze-dark"
+            >
+              Sign out
+            </a>
+          )}
         </nav>
       </div>
     </header>

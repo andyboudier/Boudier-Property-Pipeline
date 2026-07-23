@@ -36,6 +36,10 @@ export async function GET(req: NextRequest) {
 
   try {
     const page = await browser.newPage();
+    // Bypass the SSO gate for these internal, same-origin render requests.
+    if (process.env.CRON_SECRET) {
+      await page.setExtraHTTPHeaders({ "x-internal-auth": process.env.CRON_SECRET });
+    }
     await page.emulateMediaType("print"); // apply the pages' @media print rules
     const target = new URL(path, req.nextUrl.origin).toString();
     await page.goto(target, { waitUntil: "networkidle0", timeout: 45_000 });
