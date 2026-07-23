@@ -384,3 +384,43 @@ export async function actionResearchIpad(id: string) {
     notes: r.notes,
   };
 }
+
+// ── Project Management — Microsoft Graph (calendar + To Do) ───────────────────
+export async function actionCreateCalendarEvent(input: {
+  subject: string;
+  start: string;
+  end: string;
+  location?: string;
+  allDay?: boolean;
+}) {
+  try {
+    const { createEvent } = await import("@/lib/graph");
+    const ev = await createEvent(input);
+    revalidatePath("/projects");
+    return { ok: true as const, event: ev };
+  } catch (e) {
+    return { ok: false as const, error: e instanceof Error ? e.message : "Failed to add event" };
+  }
+}
+
+export async function actionCreateTask(listId: string, title: string, due?: string) {
+  try {
+    const { createTask } = await import("@/lib/graph");
+    const task = await createTask(listId, title, due);
+    revalidatePath("/projects");
+    return { ok: true as const, task };
+  } catch (e) {
+    return { ok: false as const, error: e instanceof Error ? e.message : "Failed to add task" };
+  }
+}
+
+export async function actionSetTaskCompleted(listId: string, taskId: string, completed: boolean) {
+  try {
+    const { setTaskCompleted } = await import("@/lib/graph");
+    await setTaskCompleted(listId, taskId, completed);
+    revalidatePath("/projects");
+    return { ok: true as const };
+  } catch (e) {
+    return { ok: false as const, error: e instanceof Error ? e.message : "Failed to update task" };
+  }
+}
