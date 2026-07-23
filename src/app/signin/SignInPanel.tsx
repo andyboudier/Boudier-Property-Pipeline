@@ -1,24 +1,19 @@
 "use client";
 
-import { useEffect } from "react";
+import { useState } from "react";
+import { signIn } from "next-auth/react";
 
 /* eslint-disable @next/next/no-img-element */
-// Microsoft's login page can't load in an iframe, so sign-in opens in a new tab.
-// Once signed in there, the session cookie lands on this domain; we poll for it
-// and reload so this view updates without a manual refresh.
+// One-click sign-in: go straight to Microsoft (skip NextAuth's provider-picker
+// page, since Entra is the only provider), same window, back to the app on
+// success.
 export function SignInPanel({ deniedByGroup, userName }: { deniedByGroup: boolean; userName: string }) {
-  useEffect(() => {
-    const id = setInterval(async () => {
-      try {
-        const r = await fetch("/api/auth/session", { cache: "no-store" });
-        const s = await r.json();
-        if (s && s.user) window.location.href = "/";
-      } catch {
-        /* ignore transient polling errors */
-      }
-    }, 3000);
-    return () => clearInterval(id);
-  }, []);
+  const [busy, setBusy] = useState(false);
+
+  function start() {
+    setBusy(true);
+    signIn("microsoft-entra-id", { callbackUrl: "/" });
+  }
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-paper-warm px-4">
@@ -47,18 +42,15 @@ export function SignInPanel({ deniedByGroup, userName }: { deniedByGroup: boolea
             <p className="mt-3 text-sm text-ink-muted">
               Sign in with your Microsoft 365 account to continue.
             </p>
-            <a
-              href="/api/auth/signin"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-6 inline-flex items-center gap-2 rounded-lg bg-bronze px-6 py-3 text-sm font-bold text-white transition hover:brightness-105"
+            <button
+              type="button"
+              onClick={start}
+              disabled={busy}
+              className="mt-6 inline-flex items-center gap-2 rounded-lg bg-bronze px-6 py-3 text-sm font-bold text-white transition hover:brightness-105 disabled:opacity-70"
             >
               <MicrosoftIcon />
-              Sign in with Microsoft
-            </a>
-            <p className="mt-4 text-xs text-ink-muted">
-              A new tab opens for sign-in. After you sign in there, this page updates automatically.
-            </p>
+              {busy ? "Redirecting to Microsoft…" : "Sign in with Microsoft"}
+            </button>
           </>
         )}
       </div>
