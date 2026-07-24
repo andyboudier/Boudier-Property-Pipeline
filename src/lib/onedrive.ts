@@ -99,6 +99,42 @@ async function createOrGetFolder(token: string, driveId: string, parentId: strin
  * Create (or reuse) the site's folder + standard subfolders under the shared
  * OneDrive root. Returns the site folder's webUrl, or null if not configured.
  */
+export interface DocumentsSyncInfo {
+  siteId: string;
+  webId: string;
+  listId: string;
+  folderId: string; // list-item unique id of the folder
+  webUrl: string;
+}
+
+/** SharePoint IDs for the shared documents folder, used to build the OneDrive
+ * one-click sync (odopen://) link. Returns null if Graph isn't configured or
+ * the IDs aren't available. */
+export async function getDocumentsSyncInfo(): Promise<DocumentsSyncInfo | null> {
+  if (!isOneDriveConfigured()) return null;
+  try {
+    const token = await getToken();
+    const rootUrl = process.env.ONEDRIVE_ROOT_SHARE_URL || ONEDRIVE_ROOT;
+    const res = await fetch(
+      `${GRAPH}/shares/${encodeShareUrl(rootUrl)}/driveItem?$select=id,webUrl,sharepointIds`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!res.ok) return null;
+    const item = await res.json();
+    const sp = item?.sharepointIds;
+    if (!sp?.siteId || !sp?.webId || !sp?.listId) return null;
+    return {
+      siteId: sp.siteId,
+      webId: sp.webId,
+      listId: sp.listId,
+      folderId: sp.listItemUniqueId || item.id || "",
+      webUrl: item.webUrl || rootUrl,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function createSiteFolders(siteName: string): Promise<string | null> {
   if (!isOneDriveConfigured()) return null;
   const token = await getToken();

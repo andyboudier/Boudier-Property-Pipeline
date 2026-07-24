@@ -6,12 +6,19 @@ import { useState } from "react";
 // directly. The reliable, Microsoft-supported path is: open the folder, then
 // use OneDrive's own "Add shortcut to My files" (a one-time click), after which
 // it stays synced into Finder automatically.
-export function DocumentsSync({ rootUrl }: { rootUrl: string }) {
+export function DocumentsSync({ rootUrl, odopenUrl }: { rootUrl: string; odopenUrl: string | null }) {
   const [opened, setOpened] = useState(false);
+  const [tried, setTried] = useState(false);
 
   function openAndSync() {
     setOpened(true);
     window.open(rootUrl, "_blank", "noopener,noreferrer");
+  }
+  function oneClick() {
+    if (!odopenUrl) return;
+    setTried(true);
+    // Hands off to the OneDrive desktop app via its protocol handler.
+    window.location.href = odopenUrl;
   }
 
   return (
@@ -26,7 +33,24 @@ export function DocumentsSync({ rootUrl }: { rootUrl: string }) {
           Make the OneDrive documents appear in Finder and stay up to date. You do this once.
         </p>
 
-        <button onClick={openAndSync} className="btn-bronze mt-4">
+        {odopenUrl && (
+          <div className="mt-4 rounded-lg border border-bronze/40 bg-bronze/5 p-3">
+            <button onClick={oneClick} className="btn-bronze">⚡ One-click sync (opens OneDrive app)</button>
+            <p className="mt-2 text-xs text-ink-muted">
+              Launches the OneDrive app on this Mac and starts syncing. If nothing happens after a few
+              seconds (OneDrive not installed, or the folder is shared from another account), use the
+              manual steps below — they always work.
+            </p>
+            {tried && (
+              <p className="mt-1 text-xs text-ink-soft">Asked OneDrive to sync — check for an app prompt, or a new folder in Finder shortly.</p>
+            )}
+          </div>
+        )}
+
+        <p className="mt-4 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+          {odopenUrl ? "Or sync manually" : "Sync in 3 steps"}
+        </p>
+        <button onClick={openAndSync} className="btn-bronze mt-2">
           Sync documents to my Mac
         </button>
 
