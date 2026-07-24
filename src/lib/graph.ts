@@ -2,10 +2,29 @@ import "server-only";
 import { getGraphToken } from "@/auth";
 
 // Thin Microsoft Graph client that acts as the signed-in user (delegated token
-// from the session). Used by the Project Management section to read/write the
-// user's own Outlook calendar and Microsoft To Do lists.
+// from the session). The Project Management section shows a SHARED calendar and
+// To Do list owned by PROJECTS_OWNER (Vanessa) so every user sees the same
+// project diary and task list. Vanessa shares her calendar + list once; each
+// user accepts the share once; the app then reads/writes them via the user's
+// own token (needs the Calendars.ReadWrite.Shared / Tasks.ReadWrite.Shared
+// scopes).
 
 const GRAPH = "https://graph.microsoft.com/v1.0";
+
+// The account whose shared calendar + To Do list the team works from.
+export const PROJECTS_OWNER = (process.env.PROJECTS_OWNER || "vanessa@boudierproperty.co.uk").toLowerCase();
+// Optional: the exact name of Vanessa's shared To Do list (else the first list
+// she has shared with the user is used).
+const PROJECTS_TODO_LIST = process.env.PROJECTS_TODO_LIST || "";
+
+/** Thrown when Vanessa hasn't shared the calendar/list with this user yet. */
+export class NotSharedError extends Error {
+  kind: "calendar" | "tasks";
+  constructor(kind: "calendar" | "tasks") {
+    super(kind === "calendar" ? "Shared calendar not found" : "Shared task list not found");
+    this.kind = kind;
+  }
+}
 
 class GraphError extends Error {
   status: number;
@@ -50,8 +69,20 @@ export interface CalEvent {
   organizer: string;
 }
 
-/** The user's events over the next `days` days (calendarView expands recurrences). */
+/** Find the calendar Vanessa has shared with this user (appears in the user's
+ * own calendar list once accepted). Throws NotSharedError if it isn't there. */
+async function sharedCalendarId(): Promise<string> {
+  const data = await graph<{ value: { id: string; name?: string; owner?: { address?: string } }[] }>(
+    `/me/calendars?$select=id,name,owner&$top=50`,
+  );
+  const cal = (data.value || []).find((c) => c.owner?.address?.toLowerCase() === PROJECTS_OWNER);
+  if (!cal) throw new NotSharedError("calendar");
+  return cal.id;
+}
+
+/** Vanessa's shared-calendar events over the next `days` days. */
 export async function listUpcomingEvents(days = 14): Promise<CalEvent[]> {
+  const calId = await sharedCalendarId();
   const start = new Date();
   const end = new Date(start.getTime() + days * 86400_000);
   const params = new URLSearchParams({
@@ -61,7 +92,7 @@ export async function listUpcomingEvents(days = 14): Promise<CalEvent[]> {
     $top: "25",
     $select: "id,subject,start,end,isAllDay,location,webLink,organizer",
   });
-  const data = await graph<{ value: RawEvent[] }>(`/me/calendarView?${params}`, {
+  const data = await graph<{ value: RawEvent[] }>(`/me/calendars/${calId}/calendarView?${params}`, {
     headers: { Prefer: 'outlook.timezone="Europe/London"' },
   });
   return (data.value || []).map(mapEvent);
@@ -74,6 +105,7 @@ export async function createEvent(input: {
   location?: string;
   allDay?: boolean;
 }): Promise<CalEvent> {
+  const calId = await sharedCalendarId();
   const body = {
     subject: input.subject,
     isAllDay: !!input.allDay,
@@ -81,7 +113,7 @@ export async function createEvent(input: {
     end: { dateTime: input.end, timeZone: "Europe/London" },
     ...(input.location ? { location: { displayName: input.location } } : {}),
   };
-  const ev = await graph<RawEvent>(`/me/events`, { method: "POST", body: JSON.stringify(body) });
+  const ev = await graph<RawEvent>(`/me/calendars/${calId}/events`, { method: "POST", body: JSON.stringify(body) });
   return mapEvent(ev);
 }
 
@@ -124,16 +156,30 @@ export interface TodoTask {
 }
 
 export async function listTaskLists(): Promise<TodoList[]> {
-  const data = await graph<{ value: { id: string; displayName: string }[] }>(`/me/todo/lists`);
+  const data = await graph<{ value: RawList[] }>(`/me/todo/lists`);
   return (data.value || []).map((l) => ({ id: l.id, name: l.displayName }));
 }
 
-/** Default To Do list ("Tasks"), falling back to the first list. */
-export async function defaultListId(): Promise<string | null> {
-  const lists = await listTaskLists();
-  if (lists.length === 0) return null;
-  const flagged = lists.find((l) => /^tasks$/i.test(l.name));
-  return (flagged || lists[0]).id;
+interface RawList {
+  id: string;
+  displayName: string;
+  isOwner?: boolean;
+  isShared?: boolean;
+}
+
+/** Vanessa's shared To Do list — i.e. a list shared WITH this user (isOwner
+ * false). Prefers PROJECTS_TODO_LIST by name if configured. Throws
+ * NotSharedError if no shared list has been accepted yet. */
+export async function defaultListId(): Promise<string> {
+  const data = await graph<{ value: RawList[] }>(`/me/todo/lists`);
+  const lists = data.value || [];
+  const shared = lists.filter((l) => l.isOwner === false || l.isShared === true);
+  const pool = shared.length ? shared : [];
+  const pick =
+    (PROJECTS_TODO_LIST && pool.find((l) => l.displayName?.toLowerCase() === PROJECTS_TODO_LIST.toLowerCase())) ||
+    pool[0];
+  if (!pick) throw new NotSharedError("tasks");
+  return pick.id;
 }
 
 export async function listTasks(listId: string, includeCompleted = false): Promise<TodoTask[]> {

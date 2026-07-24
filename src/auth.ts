@@ -6,7 +6,9 @@ import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
 // Graph token is kept on the session so the app can read/write the signed-in
 // user's calendar and To Do lists (Project Management section).
 
-const SCOPE = "openid profile email offline_access User.Read Calendars.ReadWrite Tasks.ReadWrite";
+// .Shared scopes so a user can read/write the calendar + To Do list Vanessa has
+// shared with them (the Project Management section works from her shared items).
+const SCOPE = "openid profile email offline_access User.Read Calendars.ReadWrite.Shared Tasks.ReadWrite.Shared";
 
 const ISSUER = process.env.AUTH_MICROSOFT_ENTRA_ID_ISSUER || "";
 // Entra v2 token endpoint, derived from the issuer (…/v2.0 → …/oauth2/v2.0/token).

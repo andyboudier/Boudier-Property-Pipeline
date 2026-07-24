@@ -11,12 +11,20 @@ export function ProjectsWorkspace({
   initialTasks,
   listId,
   error,
+  ownerName,
+  ownerEmail,
+  calendarNotShared,
+  tasksNotShared,
 }: {
   signedIn: boolean;
   initialEvents: CalEvent[];
   initialTasks: TodoTask[];
   listId: string | null;
   error: string | null;
+  ownerName: string;
+  ownerEmail: string;
+  calendarNotShared: boolean;
+  tasksNotShared: boolean;
 }) {
   const router = useRouter();
 
@@ -26,7 +34,7 @@ export function ProjectsWorkspace({
         Sign in with your Microsoft account to see and manage your calendar and tasks here.
         <div className="mt-4 flex gap-3">
           <a href="https://outlook.office.com/calendar/" target="_blank" rel="noopener noreferrer" className="btn-ghost">Open Outlook Calendar ↗</a>
-          <a href="https://to-do.office.com/tasks/" target="_blank" rel="noopener noreferrer" className="btn-ghost">Open Microsoft To Do ↗</a>
+          <a href="https://to-do.office.com/" target="_blank" rel="noopener noreferrer" className="btn-ghost">Open Microsoft To Do ↗</a>
         </div>
       </div>
     );
@@ -43,7 +51,7 @@ export function ProjectsWorkspace({
         <div className="mt-4 flex gap-3">
           <a href="/api/auth/signout" className="btn-ghost">Sign out</a>
           <a href="https://outlook.office.com/calendar/" target="_blank" rel="noopener noreferrer" className="btn-ghost">Outlook ↗</a>
-          <a href="https://to-do.office.com/tasks/" target="_blank" rel="noopener noreferrer" className="btn-ghost">To Do ↗</a>
+          <a href="https://to-do.office.com/" target="_blank" rel="noopener noreferrer" className="btn-ghost">To Do ↗</a>
         </div>
       </div>
     );
@@ -51,9 +59,52 @@ export function ProjectsWorkspace({
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
-      <CalendarPanel events={initialEvents} onChange={() => router.refresh()} />
-      <TasksPanel tasks={initialTasks} listId={listId} onChange={() => router.refresh()} />
+      {calendarNotShared ? (
+        <NotSharedCard kind="calendar" ownerName={ownerName} ownerEmail={ownerEmail} />
+      ) : (
+        <CalendarPanel events={initialEvents} onChange={() => router.refresh()} />
+      )}
+      {tasksNotShared ? (
+        <NotSharedCard kind="tasks" ownerName={ownerName} ownerEmail={ownerEmail} />
+      ) : (
+        <TasksPanel tasks={initialTasks} listId={listId} onChange={() => router.refresh()} />
+      )}
     </div>
+  );
+}
+
+/* Shown until Vanessa has shared the calendar / list with this user. */
+function NotSharedCard({ kind, ownerName, ownerEmail }: { kind: "calendar" | "tasks"; ownerName: string; ownerEmail: string }) {
+  const isCal = kind === "calendar";
+  return (
+    <section className="card overflow-hidden">
+      <header className="flex items-center justify-between border-b border-paper-line px-5 py-3">
+        <h2 className="font-serif text-lg text-ink">{isCal ? "Calendar" : "Tasks"}</h2>
+        <a
+          href={isCal ? "https://outlook.office.com/calendar/" : "https://to-do.office.com/"}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-ink-muted hover:text-bronze-dark"
+        >
+          Open in {isCal ? "Outlook" : "To Do"} ↗
+        </a>
+      </header>
+      <div className="space-y-3 p-5 text-sm text-ink-muted">
+        <p className="font-medium text-ink">{ownerName}&apos;s {isCal ? "calendar" : "to-do list"} isn&apos;t shared with you yet.</p>
+        {isCal ? (
+          <ol className="list-decimal space-y-1 pl-5 text-[13px]">
+            <li>{ownerName} ({ownerEmail}) shares her calendar in Outlook → Calendar → <em>Sharing and permissions</em> → add you with <strong>Can edit</strong>.</li>
+            <li>You accept the share from the email invite — it then appears here automatically.</li>
+          </ol>
+        ) : (
+          <ol className="list-decimal space-y-1 pl-5 text-[13px]">
+            <li>{ownerName} opens the list in Microsoft To Do → <em>Share list</em> → creates an invitation link → sends it to the team.</li>
+            <li>You open the link once — the shared list then appears here automatically.</li>
+          </ol>
+        )}
+        <p className="text-xs">If you just accepted the share, sign out and back in to refresh permissions.</p>
+      </div>
+    </section>
   );
 }
 
@@ -114,7 +165,7 @@ function CalendarPanel({ events, onChange }: { events: CalEvent[]; onChange: () 
           </div>
           <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Location (optional)" className="field w-full" />
           {err && <p className="text-xs text-red-600">{err}</p>}
-          <button onClick={add} disabled={pending} className="btn-primary px-4 py-1.5 text-sm disabled:opacity-60">{pending ? "Adding…" : "Add to my calendar"}</button>
+          <button onClick={add} disabled={pending} className="btn-primary px-4 py-1.5 text-sm disabled:opacity-60">{pending ? "Adding…" : "Add to calendar"}</button>
         </div>
       )}
 
@@ -171,7 +222,7 @@ function TasksPanel({ tasks, listId, onChange }: { tasks: TodoTask[]; listId: st
     <section className="card overflow-hidden">
       <header className="flex items-center justify-between border-b border-paper-line px-5 py-3">
         <h2 className="font-serif text-lg text-ink">Tasks</h2>
-        <a href="https://to-do.office.com/tasks/" target="_blank" rel="noopener noreferrer" className="text-xs text-ink-muted hover:text-bronze-dark">Open in To Do ↗</a>
+        <a href="https://to-do.office.com/" target="_blank" rel="noopener noreferrer" className="text-xs text-ink-muted hover:text-bronze-dark">Open in To Do ↗</a>
       </header>
 
       <div className="flex flex-wrap items-center gap-2 border-b border-paper-line bg-paper-warm/50 p-4">
