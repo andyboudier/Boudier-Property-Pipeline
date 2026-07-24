@@ -69,20 +69,18 @@ export interface CalEvent {
   organizer: string;
 }
 
-/** Find the calendar Vanessa has shared with this user (appears in the user's
- * own calendar list once accepted). Throws NotSharedError if it isn't there. */
-async function sharedCalendarId(): Promise<string> {
-  const data = await graph<{ value: { id: string; name?: string; owner?: { address?: string } }[] }>(
-    `/me/calendars?$select=id,name,owner&$top=50`,
-  );
-  const cal = (data.value || []).find((c) => c.owner?.address?.toLowerCase() === PROJECTS_OWNER);
-  if (!cal) throw new NotSharedError("calendar");
-  return cal.id;
+// Vanessa's mailbox, addressed directly. This works both when the caller has
+// Exchange "Full Access" to her mailbox AND when she's shared her calendar with
+// them — either way the .Shared scope lets a delegated token reach it.
+const OWNER_PATH = `/users/${encodeURIComponent(PROJECTS_OWNER)}`;
+
+function asNotShared<T>(kind: "calendar" | "tasks", e: unknown): T {
+  if (e instanceof GraphError && (e.status === 403 || e.status === 404)) throw new NotSharedError(kind);
+  throw e;
 }
 
-/** Vanessa's shared-calendar events over the next `days` days. */
+/** Vanessa's calendar events over the next `days` days. */
 export async function listUpcomingEvents(days = 14): Promise<CalEvent[]> {
-  const calId = await sharedCalendarId();
   const start = new Date();
   const end = new Date(start.getTime() + days * 86400_000);
   const params = new URLSearchParams({
@@ -92,10 +90,14 @@ export async function listUpcomingEvents(days = 14): Promise<CalEvent[]> {
     $top: "25",
     $select: "id,subject,start,end,isAllDay,location,webLink,organizer",
   });
-  const data = await graph<{ value: RawEvent[] }>(`/me/calendars/${calId}/calendarView?${params}`, {
-    headers: { Prefer: 'outlook.timezone="Europe/London"' },
-  });
-  return (data.value || []).map(mapEvent);
+  try {
+    const data = await graph<{ value: RawEvent[] }>(`${OWNER_PATH}/calendarView?${params}`, {
+      headers: { Prefer: 'outlook.timezone="Europe/London"' },
+    });
+    return (data.value || []).map(mapEvent);
+  } catch (e) {
+    return asNotShared("calendar", e);
+  }
 }
 
 export async function createEvent(input: {
@@ -105,7 +107,6 @@ export async function createEvent(input: {
   location?: string;
   allDay?: boolean;
 }): Promise<CalEvent> {
-  const calId = await sharedCalendarId();
   const body = {
     subject: input.subject,
     isAllDay: !!input.allDay,
@@ -113,8 +114,12 @@ export async function createEvent(input: {
     end: { dateTime: input.end, timeZone: "Europe/London" },
     ...(input.location ? { location: { displayName: input.location } } : {}),
   };
-  const ev = await graph<RawEvent>(`/me/calendars/${calId}/events`, { method: "POST", body: JSON.stringify(body) });
-  return mapEvent(ev);
+  try {
+    const ev = await graph<RawEvent>(`${OWNER_PATH}/events`, { method: "POST", body: JSON.stringify(body) });
+    return mapEvent(ev);
+  } catch (e) {
+    return asNotShared("calendar", e);
+  }
 }
 
 interface RawEvent {
@@ -155,49 +160,77 @@ export interface TodoTask {
   importance: string;
 }
 
-export async function listTaskLists(): Promise<TodoList[]> {
-  const data = await graph<{ value: RawList[] }>(`/me/todo/lists`);
-  return (data.value || []).map((l) => ({ id: l.id, name: l.displayName }));
-}
-
 interface RawList {
   id: string;
   displayName: string;
   isOwner?: boolean;
   isShared?: boolean;
+  wellknownListName?: string;
 }
 
-/** Vanessa's shared To Do list — i.e. a list shared WITH this user (isOwner
- * false). Prefers PROJECTS_TODO_LIST by name if configured. Throws
- * NotSharedError if no shared list has been accepted yet. */
+// The client holds an opaque token that encodes BOTH the base path (Vanessa's
+// mailbox vs the user's own) and the list id, so task read/writes hit the right
+// place without the client needing to know which.
+function packToken(base: string, listId: string): string {
+  return `${base}::${listId}`;
+}
+function unpackToken(token: string): { base: string; listId: string } {
+  const i = token.indexOf("::");
+  return i === -1 ? { base: "/me/todo", listId: token } : { base: token.slice(0, i), listId: token.slice(i + 2) };
+}
+
+function pickList(lists: RawList[]): RawList | undefined {
+  return (
+    (PROJECTS_TODO_LIST && lists.find((l) => l.displayName?.toLowerCase() === PROJECTS_TODO_LIST.toLowerCase())) ||
+    lists.find((l) => l.wellknownListName === "defaultList") ||
+    lists[0]
+  );
+}
+
+/** Resolve which To Do list to work from, preferring Vanessa's mailbox directly
+ * (Full Access), then a list she's shared with the user. Returns an opaque
+ * token used by the task read/write helpers. Throws NotSharedError if neither
+ * is reachable. */
 export async function defaultListId(): Promise<string> {
+  // 1) Vanessa's mailbox directly — works with Exchange Full Access.
+  try {
+    const data = await graph<{ value: RawList[] }>(`${OWNER_PATH}/todo/lists`);
+    const pick = pickList(data.value || []);
+    if (pick) return packToken(`${OWNER_PATH}/todo`, pick.id);
+  } catch {
+    /* fall back to a shared list */
+  }
+  // 2) A list Vanessa has shared with this user (appears in their own lists).
   const data = await graph<{ value: RawList[] }>(`/me/todo/lists`);
-  const lists = data.value || [];
-  const shared = lists.filter((l) => l.isOwner === false || l.isShared === true);
-  const pool = shared.length ? shared : [];
-  const pick =
-    (PROJECTS_TODO_LIST && pool.find((l) => l.displayName?.toLowerCase() === PROJECTS_TODO_LIST.toLowerCase())) ||
-    pool[0];
+  const shared = (data.value || []).filter((l) => l.isOwner === false || l.isShared === true);
+  const pick = pickList(shared);
   if (!pick) throw new NotSharedError("tasks");
-  return pick.id;
+  return packToken("/me/todo", pick.id);
 }
 
-export async function listTasks(listId: string, includeCompleted = false): Promise<TodoTask[]> {
+export async function listTasks(token: string, includeCompleted = false): Promise<TodoTask[]> {
+  const { base, listId } = unpackToken(token);
   const params = new URLSearchParams({ $top: "50", $orderby: "createdDateTime desc" });
   if (!includeCompleted) params.set("$filter", "status ne 'completed'");
-  const data = await graph<{ value: RawTask[] }>(`/me/todo/lists/${listId}/tasks?${params}`);
-  return (data.value || []).map(mapTask);
+  try {
+    const data = await graph<{ value: RawTask[] }>(`${base}/lists/${listId}/tasks?${params}`);
+    return (data.value || []).map(mapTask);
+  } catch (e) {
+    return asNotShared("tasks", e);
+  }
 }
 
-export async function createTask(listId: string, title: string, due?: string): Promise<TodoTask> {
+export async function createTask(token: string, title: string, due?: string): Promise<TodoTask> {
+  const { base, listId } = unpackToken(token);
   const body: Record<string, unknown> = { title };
   if (due) body.dueDateTime = { dateTime: `${due}T00:00:00`, timeZone: "Europe/London" };
-  const t = await graph<RawTask>(`/me/todo/lists/${listId}/tasks`, { method: "POST", body: JSON.stringify(body) });
+  const t = await graph<RawTask>(`${base}/lists/${listId}/tasks`, { method: "POST", body: JSON.stringify(body) });
   return mapTask(t);
 }
 
-export async function setTaskCompleted(listId: string, taskId: string, completed: boolean): Promise<void> {
-  await graph(`/me/todo/lists/${listId}/tasks/${taskId}`, {
+export async function setTaskCompleted(token: string, taskId: string, completed: boolean): Promise<void> {
+  const { base, listId } = unpackToken(token);
+  await graph(`${base}/lists/${listId}/tasks/${taskId}`, {
     method: "PATCH",
     body: JSON.stringify({ status: completed ? "completed" : "notStarted" }),
   });
