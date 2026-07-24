@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import type { Contact } from "@/lib/types";
 import { DEFAULT_CATEGORIES, allCategories, matchesQuery } from "@/lib/contacts";
 import { actionAddContact, actionUpdateContact, actionDeleteContact, actionScanCard } from "@/app/actions";
+import { MeetingScheduler } from "./MeetingScheduler";
 import { CameraScanner, cameraErrorMessage } from "./CameraScanner";
 
 type Draft = Partial<Contact>;
@@ -19,6 +20,8 @@ export function ContactsView({ initialContacts }: { initialContacts: Contact[] }
   const [stream, setStream] = useState<MediaStream | null>(null); // live in-app camera
   const [camErr, setCamErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [meetingFor, setMeetingFor] = useState<Contact | null>(null); // open the Teams scheduler
+  const [preview, setPreview] = useState<string | null>(null); // enlarged business-card image
   const fileRef = useRef<HTMLInputElement>(null); // upload (gallery / file)
   const nativeRef = useRef<HTMLInputElement>(null); // device camera (OS) fallback
 
@@ -155,7 +158,13 @@ export function ContactsView({ initialContacts }: { initialContacts: Contact[] }
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((c) => (
-            <ContactCard key={c.id} c={c} onEdit={() => setEditing(c)} />
+            <ContactCard
+              key={c.id}
+              c={c}
+              onEdit={() => setEditing(c)}
+              onMeeting={() => setMeetingFor(c)}
+              onPreview={(url) => setPreview(url)}
+            />
           ))}
         </div>
       )}
@@ -196,6 +205,22 @@ export function ContactsView({ initialContacts }: { initialContacts: Contact[] }
           }}
         />
       )}
+
+      <MeetingScheduler
+        open={!!meetingFor}
+        onClose={() => setMeetingFor(null)}
+        initialSubject={meetingFor ? `Meeting with ${meetingFor.name}${meetingFor.company ? ` (${meetingFor.company})` : ""}` : ""}
+        initialAttendees={meetingFor?.email ? [meetingFor.email] : []}
+      />
+
+      {/* Business-card lightbox */}
+      {preview && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-ink/80 p-4" onClick={() => setPreview(null)}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={preview} alt="Business card" className="max-h-[90vh] max-w-[92vw] rounded-lg shadow-2xl" onClick={(e) => e.stopPropagation()} />
+          <button onClick={() => setPreview(null)} className="absolute right-4 top-4 rounded-full bg-white/90 px-3 py-1 text-sm font-medium text-ink shadow" aria-label="Close preview">✕</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -212,7 +237,7 @@ function Chip({ label, active, onClick }: { label: string; active: boolean; onCl
   );
 }
 
-function ContactCard({ c, onEdit }: { c: Contact; onEdit: () => void }) {
+function ContactCard({ c, onEdit, onMeeting, onPreview }: { c: Contact; onEdit: () => void; onMeeting: () => void; onPreview: (url: string) => void }) {
   return (
     <article className="card flex flex-col p-4">
       <div className="flex items-start justify-between gap-2">
@@ -237,9 +262,23 @@ function ContactCard({ c, onEdit }: { c: Contact; onEdit: () => void }) {
       </div>
       {c.notes && <p className="mt-2 line-clamp-3 text-xs text-ink-muted">{c.notes}</p>}
       {c.cardImageUrl && (
-        <img src={c.cardImageUrl} alt="Business card" className="mt-2 h-16 w-auto max-w-full self-start rounded border border-paper-line object-contain" />
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={c.cardImageUrl}
+          alt="Business card — click to enlarge"
+          title="Click to enlarge"
+          onClick={() => onPreview(c.cardImageUrl!)}
+          className="mt-2 h-16 w-auto max-w-full cursor-zoom-in self-start rounded border border-paper-line object-contain transition hover:brightness-95"
+        />
       )}
-      <div className="mt-auto pt-3 text-right">
+      <div className="mt-auto flex items-center justify-between pt-3">
+        <button
+          onClick={onMeeting}
+          className="inline-flex items-center gap-1 text-xs font-medium text-bronze-dark hover:underline"
+          title={`Schedule a Teams meeting with ${c.name}`}
+        >
+          📅 Teams meeting
+        </button>
         <button onClick={onEdit} className="text-xs text-ink-muted hover:text-bronze-dark">Edit</button>
       </div>
     </article>

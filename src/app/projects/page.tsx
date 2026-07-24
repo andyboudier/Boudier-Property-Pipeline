@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { isAuthConfigured } from "@/lib/authConfig";
 import { listUpcomingEvents, listTasks, defaultListId, NotSharedError, PROJECTS_OWNER, type CalEvent, type TodoTask } from "@/lib/graph";
 import { ProjectsWorkspace } from "@/components/ProjectsWorkspace";
+import { ScheduleMeetingButton } from "@/components/ScheduleMeetingButton";
 
 export const dynamic = "force-dynamic";
 
@@ -45,14 +46,17 @@ export default async function ProjectsPage() {
 
   return (
     <div className="space-y-6">
-      <section>
-        <Link href="/" className="text-xs text-ink-muted hover:text-bronze-dark">← Home</Link>
-        <p className="mt-2 font-serif text-xs uppercase tracking-[0.3em] text-bronze-dark">Project Management</p>
-        <h1 className="mt-1 font-serif text-3xl text-ink sm:text-[34px]">Calendar &amp; Tasks</h1>
-        <p className="mt-1 max-w-xl text-sm text-ink-muted">
-          {owner}&apos;s shared project calendar and to-do list. Add events and tasks here and they
-          appear for the whole team in Outlook and To Do straight away.
-        </p>
+      <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <Link href="/" className="text-xs text-ink-muted hover:text-bronze-dark">← Home</Link>
+          <p className="mt-2 font-serif text-xs uppercase tracking-[0.3em] text-bronze-dark">Project Management</p>
+          <h1 className="mt-1 font-serif text-3xl text-ink sm:text-[34px]">Calendar &amp; Tasks</h1>
+          <p className="mt-1 max-w-xl text-sm text-ink-muted">
+            {owner}&apos;s shared project calendar and to-do list. Add events and tasks here and they
+            appear for the whole team in Outlook and To Do straight away.
+          </p>
+        </div>
+        {session?.user && <ScheduleMeetingButton />}
       </section>
 
       <ProjectsWorkspace

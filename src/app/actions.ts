@@ -403,6 +403,39 @@ export async function actionCreateCalendarEvent(input: {
   }
 }
 
+export async function actionScheduleMeeting(input: {
+  subject: string;
+  start: string;
+  end: string;
+  attendees: string[];
+}) {
+  try {
+    const { createTeamsMeeting } = await import("@/lib/graph");
+    const meeting = await createTeamsMeeting(input);
+    const { addRecentAttendees } = await import("@/lib/db");
+    await addRecentAttendees(input.attendees.map((email) => ({ email })));
+    revalidatePath("/projects");
+    return { ok: true as const, meeting };
+  } catch (e) {
+    return { ok: false as const, error: e instanceof Error ? e.message : "Failed to schedule the meeting" };
+  }
+}
+
+/** Combined attendee suggestions for the scheduler: contact emails + any
+ * previously-used attendee addresses, deduped. */
+export async function actionAttendeeSuggestions(): Promise<{ email: string; name: string }[]> {
+  const { listContacts, getRecentAttendees } = await import("@/lib/db");
+  const [contacts, recent] = await Promise.all([listContacts(), getRecentAttendees()]);
+  const map = new Map<string, { email: string; name: string }>();
+  for (const c of contacts) {
+    if (c.email) map.set(c.email.toLowerCase(), { email: c.email, name: c.name || c.company || "" });
+  }
+  for (const r of recent) {
+    if (r.email && !map.has(r.email.toLowerCase())) map.set(r.email.toLowerCase(), r);
+  }
+  return [...map.values()];
+}
+
 export async function actionCreateTask(listId: string, title: string, due?: string) {
   try {
     const { createTask } = await import("@/lib/graph");

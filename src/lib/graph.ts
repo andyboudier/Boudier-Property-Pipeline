@@ -122,6 +122,47 @@ export async function createEvent(input: {
   }
 }
 
+export interface MeetingResult {
+  id: string;
+  subject: string;
+  start: string;
+  end: string;
+  joinUrl: string;
+  webLink: string;
+}
+
+/** Create a Teams online meeting on the signed-in user's own calendar (they are
+ * the organizer/host) and invite the attendee emails. */
+export async function createTeamsMeeting(input: {
+  subject: string;
+  start: string;
+  end: string;
+  attendees: string[];
+}): Promise<MeetingResult> {
+  const body = {
+    subject: input.subject,
+    start: { dateTime: input.start, timeZone: "Europe/London" },
+    end: { dateTime: input.end, timeZone: "Europe/London" },
+    isOnlineMeeting: true,
+    onlineMeetingProvider: "teamsForBusiness",
+    attendees: input.attendees
+      .filter(Boolean)
+      .map((a) => ({ emailAddress: { address: a }, type: "required" })),
+  };
+  const ev = await graph<RawEvent & { onlineMeeting?: { joinUrl?: string } }>(`/me/events`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return {
+    id: ev.id,
+    subject: ev.subject || input.subject,
+    start: ev.start?.dateTime || input.start,
+    end: ev.end?.dateTime || input.end,
+    joinUrl: ev.onlineMeeting?.joinUrl || "",
+    webLink: ev.webLink || "",
+  };
+}
+
 interface RawEvent {
   id: string;
   subject?: string;

@@ -24,6 +24,7 @@ const g = globalThis as unknown as {
   __boudierIgnored?: IgnoredUrl[];
   __boudierContacts?: Contact[];
   __boudierInsolvencyCursor?: number;
+  __boudierRecentAttendees?: { email: string; name: string }[];
 };
 function memStore(): Map<string, Property> {
   if (!g.__boudierStore) {
@@ -457,6 +458,34 @@ export async function saveInsolvencyCursor(start: number): Promise<void> {
     return;
   }
   await db.collection("config").doc("insolvencyCursor").set({ start });
+}
+
+// Remembered meeting-attendee emails (for the scheduler's autofill), most
+// recent last, capped.
+const RECENT_ATTENDEE_CAP = 100;
+
+export async function getRecentAttendees(): Promise<{ email: string; name: string }[]> {
+  const db = getDb();
+  if (!db) return g.__boudierRecentAttendees ?? [];
+  const doc = await db.collection("config").doc("recentAttendees").get();
+  return doc.exists ? ((doc.data() as { list?: { email: string; name: string }[] }).list ?? []) : [];
+}
+
+export async function addRecentAttendees(items: { email: string; name?: string }[]): Promise<void> {
+  const cur = await getRecentAttendees();
+  const map = new Map(cur.map((x) => [x.email.toLowerCase(), x]));
+  for (const it of items) {
+    if (!it.email) continue;
+    const key = it.email.toLowerCase();
+    map.set(key, { email: it.email, name: it.name || map.get(key)?.name || "" });
+  }
+  const list = [...map.values()].slice(-RECENT_ATTENDEE_CAP);
+  const db = getDb();
+  if (!db) {
+    g.__boudierRecentAttendees = list;
+    return;
+  }
+  await db.collection("config").doc("recentAttendees").set({ list });
 }
 
 export async function saveDcas(id: string, dcas: Dcas) {
