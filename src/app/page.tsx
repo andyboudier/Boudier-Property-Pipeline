@@ -1,7 +1,6 @@
 import { listProperties, listLeads, listContacts } from "@/lib/db";
 import { auth } from "@/auth";
 import { isAuthConfigured } from "@/lib/authConfig";
-import { ONEDRIVE_ROOT } from "@/lib/constants";
 import { SplashScreen } from "@/components/SplashScreen";
 
 export const dynamic = "force-dynamic";
@@ -85,11 +84,10 @@ export default async function HomePage() {
       ),
     },
     {
-      href: ONEDRIVE_ROOT,
+      href: "/documents",
       label: "Documents",
-      desc: "Site folders on OneDrive — photos, plans & costs",
+      desc: "Site folders on OneDrive — open or sync to your Mac",
       color: "#8C6E40",
-      external: true,
       icon: (
         <Svg>
           <path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-10.5Z" fill="currentColor" fillOpacity=".14" />

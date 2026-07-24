@@ -33,7 +33,8 @@ export function MeetingScheduler({
   const [pending, start] = useTransition();
   const boxRef = useRef<HTMLDivElement>(null);
 
-  // Reset to the given presets each time the modal is opened.
+  // Reset to the given presets each time the modal is opened; default the date
+  // to today.
   useEffect(() => {
     if (open) {
       setSubject(initialSubject);
@@ -41,6 +42,9 @@ export function MeetingScheduler({
       setInput("");
       setErr(null);
       setResult(null);
+      const t = new Date();
+      const pad = (n: number) => String(n).padStart(2, "0");
+      setDate(`${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`);
       actionAttendeeSuggestions().then(setSuggestions).catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
