@@ -131,9 +131,10 @@ export interface MeetingResult {
   webLink: string;
 }
 
-/** Create a Teams online meeting on Vanessa's shared project calendar (she is
- * the organizer) and invite the attendee emails, so it shows on the team's
- * shared calendar. */
+/** Create a real Teams online meeting on the SIGNED-IN user's own calendar
+ * (they are the organizer/host — Microsoft only provisions the Teams meeting
+ * when you create it as the organizer) and invite the attendee emails. Add
+ * PROJECTS_OWNER to the attendees to also surface it on the shared calendar. */
 export async function createTeamsMeeting(input: {
   subject: string;
   start: string;
@@ -150,14 +151,16 @@ export async function createTeamsMeeting(input: {
       .filter(Boolean)
       .map((a) => ({ emailAddress: { address: a }, type: "required" })),
   };
-  let ev: RawEvent & { onlineMeeting?: { joinUrl?: string } };
+  // Create then re-read the event asking specifically for the Teams join URL,
+  // which isn't always populated on the create response.
+  const created = await graph<RawEvent>(`/me/events`, { method: "POST", body: JSON.stringify(body) });
+  let ev: RawEvent & { onlineMeeting?: { joinUrl?: string } } = created;
   try {
-    ev = await graph<RawEvent & { onlineMeeting?: { joinUrl?: string } }>(`${OWNER_PATH}/events`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
-  } catch (e) {
-    return asNotShared("calendar", e);
+    ev = await graph<RawEvent & { onlineMeeting?: { joinUrl?: string } }>(
+      `/me/events/${created.id}?$select=id,subject,start,end,webLink,onlineMeeting`,
+    );
+  } catch {
+    /* use the create response */
   }
   return {
     id: ev.id,

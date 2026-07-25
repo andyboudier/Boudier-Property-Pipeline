@@ -90,19 +90,21 @@ function NotSharedCard({ kind, ownerName, ownerEmail }: { kind: "calendar" | "ta
         </a>
       </header>
       <div className="space-y-3 p-5 text-sm text-ink-muted">
-        <p className="font-medium text-ink">{ownerName}&apos;s {isCal ? "calendar" : "to-do list"} isn&apos;t shared with you yet.</p>
+        <p className="font-medium text-ink">Can&apos;t reach {ownerName}&apos;s {isCal ? "calendar" : "main To Do list"} yet.</p>
         {isCal ? (
           <ol className="list-decimal space-y-1 pl-5 text-[13px]">
-            <li>{ownerName} ({ownerEmail}) shares her calendar in Outlook → Calendar → <em>Sharing and permissions</em> → add you with <strong>Can edit</strong>.</li>
-            <li>You accept the share from the email invite — it then appears here automatically.</li>
+            <li>You need Full Access to {ownerEmail}&apos;s mailbox (Exchange admin), or she shares her calendar with you (Outlook → Calendar → <em>Sharing and permissions</em>, <strong>Can edit</strong>).</li>
+            <li><strong>Sign out and back in</strong> so your account picks up the calendar permission.</li>
           </ol>
         ) : (
           <ol className="list-decimal space-y-1 pl-5 text-[13px]">
-            <li>{ownerName} opens the list in Microsoft To Do → <em>Share list</em> → creates an invitation link → sends it to the team.</li>
-            <li>You open the link once — the shared list then appears here automatically.</li>
+            <li>This links to {ownerName}&apos;s main To Do list via your Full Access to {ownerEmail}.</li>
+            <li><strong>Sign out and back in</strong> so your account picks up the Tasks permission — the list then appears here.</li>
           </ol>
         )}
-        <p className="text-xs">If you just accepted the share, sign out and back in to refresh permissions.</p>
+        <p className="text-xs">
+          <a href="/api/auth/signout" className="text-bronze-dark hover:underline">Sign out now ↗</a>
+        </p>
       </div>
     </section>
   );
@@ -118,6 +120,7 @@ function CalendarPanel({ events, onChange }: { events: CalEvent[]; onChange: () 
   const [time, setTime] = useState("09:00");
   const [mins, setMins] = useState(60);
   const [location, setLocation] = useState("");
+  const [teams, setTeams] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   function add() {
@@ -132,9 +135,9 @@ function CalendarPanel({ events, onChange }: { events: CalEvent[]; onChange: () 
     const pad = (n: number) => String(n).padStart(2, "0");
     const endISO = `${endD.getFullYear()}-${pad(endD.getMonth() + 1)}-${pad(endD.getDate())}T${pad(endD.getHours())}:${pad(endD.getMinutes())}:00`;
     start(async () => {
-      const r = await actionCreateCalendarEvent({ subject: subject.trim(), start: startISO, end: endISO, location: location.trim() || undefined });
+      const r = await actionCreateCalendarEvent({ subject: subject.trim(), start: startISO, end: endISO, location: location.trim() || undefined, teams });
       if (!r.ok) { setErr(r.error); return; }
-      setSubject(""); setLocation(""); setDate(""); setOpen(false);
+      setSubject(""); setLocation(""); setDate(""); setTeams(false); setOpen(false);
       onChange();
     });
   }
@@ -164,8 +167,12 @@ function CalendarPanel({ events, onChange }: { events: CalEvent[]; onChange: () 
             </select>
           </div>
           <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Location (optional)" className="field w-full" />
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-ink-soft">
+            <input type="checkbox" checked={teams} onChange={(e) => setTeams(e.target.checked)} className="h-4 w-4 accent-bronze" />
+            Make this a Teams meeting <span className="text-xs text-ink-muted">(adds a Teams join link)</span>
+          </label>
           {err && <p className="text-xs text-red-600">{err}</p>}
-          <button onClick={add} disabled={pending} className="btn-primary px-4 py-1.5 text-sm disabled:opacity-60">{pending ? "Adding…" : "Add to calendar"}</button>
+          <button onClick={add} disabled={pending} className="btn-primary px-4 py-1.5 text-sm disabled:opacity-60">{pending ? "Adding…" : teams ? "Add Teams meeting" : "Add to calendar"}</button>
         </div>
       )}
 

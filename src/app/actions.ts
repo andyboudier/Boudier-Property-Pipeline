@@ -392,8 +392,17 @@ export async function actionCreateCalendarEvent(input: {
   end: string;
   location?: string;
   allDay?: boolean;
+  teams?: boolean;
 }) {
   try {
+    if (input.teams) {
+      // Real Teams meeting on the organiser's calendar; invite Vanessa so it
+      // still appears on the shared project calendar.
+      const { createTeamsMeeting, PROJECTS_OWNER } = await import("@/lib/graph");
+      const m = await createTeamsMeeting({ subject: input.subject, start: input.start, end: input.end, attendees: [PROJECTS_OWNER] });
+      revalidatePath("/projects");
+      return { ok: true as const, joinUrl: m.joinUrl };
+    }
     const { createEvent } = await import("@/lib/graph");
     const ev = await createEvent(input);
     revalidatePath("/projects");
