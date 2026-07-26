@@ -58,14 +58,33 @@ export default async function PropertyOverview({ params }: { params: { id: strin
         <Link href="/pipeline" className="text-xs text-ink-muted hover:text-bronze-dark">← Pipeline</Link>
         <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-4">
-            {p.imageUrl && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={p.imageUrl}
-                alt={p.name}
-                className="h-20 w-28 shrink-0 rounded-lg border border-paper-line object-cover"
-              />
-            )}
+            {p.imageUrl &&
+              (p.listingUrl ? (
+                <a
+                  href={p.listingUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={`Open the listing${p.listingSource ? ` (${p.listingSource})` : ""} ↗`}
+                  className="group relative shrink-0"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={p.imageUrl}
+                    alt={p.name}
+                    className="h-20 w-28 rounded-lg border border-paper-line object-cover transition group-hover:brightness-90"
+                  />
+                  <span className="absolute bottom-1 right-1 rounded bg-ink/70 px-1 py-0.5 text-[9px] font-medium text-white opacity-0 transition group-hover:opacity-100">
+                    Listing ↗
+                  </span>
+                </a>
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={p.imageUrl}
+                  alt={p.name}
+                  className="h-20 w-28 shrink-0 rounded-lg border border-paper-line object-cover"
+                />
+              ))}
             <div>
               <h1 className="font-serif text-3xl text-ink">{p.name}</h1>
               <p className="mt-1 text-sm text-ink-muted">
