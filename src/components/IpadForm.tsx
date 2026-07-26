@@ -179,6 +179,18 @@ export function IpadForm({ propertyId, initial }: { propertyId: string; initial:
                     <tr><td colSpan={6} className="py-3 text-center text-xs text-ink-muted">No unit lines yet.</td></tr>
                   )}
                 </tbody>
+                {inp.units.length > 0 && (
+                  <tfoot>
+                    <tr className="border-t-2 border-ink font-semibold text-ink">
+                      <td className="py-1.5 pr-2 text-[11px] uppercase tracking-wide text-ink-muted">Total</td>
+                      <td className="py-1.5 pr-2 tabular-nums">{inp.units.reduce((n, u) => n + (u.units || 0), 0)}</td>
+                      <td className="py-1.5 pr-2" />
+                      <td className="py-1.5 pr-2 tabular-nums">{num(inp.units.reduce((n, u) => n + (u.units || 0) * (u.m2 || 0), 0))} m²</td>
+                      <td className="py-1.5 pr-2 tabular-nums">{gbp(inp.units.reduce((n, u) => n + (u.totalGdv || 0), 0))}</td>
+                      <td className="py-1.5" />
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
             <div className="mt-2 flex gap-2">

@@ -202,10 +202,34 @@ function typeBucket(c: MacComp): string | null {
   if (t === "Detached House") return "Detached";
   return null;
 }
-function bedBucket(c: MacComp): string | null {
-  if (typeof c.beds !== "number" || c.beds < 1) return null;
-  if (c.beds >= 6) return "6+-bed";
-  return `${c.beds}-bed`;
+// A comp often lives in a segment that already declares its bed count / type
+// (e.g. a "2 Bed Flats" segment with min=max beds=2). When the comp's own field
+// is blank, fall back to the segment so it still summarises.
+function effBeds(c: MacComp, seg?: MacSegment): number | null {
+  if (typeof c.beds === "number") return c.beds;
+  if (seg && seg.minBeds != null && seg.minBeds === seg.maxBeds) return seg.minBeds;
+  return null;
+}
+function segIsFlats(seg?: MacSegment): boolean {
+  return !!seg && /flat|apartment|maisonette/i.test(seg.propertyTypeFilter || "");
+}
+function typeBucketSeg(c: MacComp, seg?: MacSegment): string | null {
+  const beds = effBeds(c, seg);
+  const isFlat = FLAT_TYPES.includes(c.propertyType) || (!c.propertyType && segIsFlats(seg));
+  if (isFlat) {
+    if (beds === 0) return "Studio";
+    if (beds === 1) return "1-bed Flat";
+    if (beds === 2) return "2-bed Flat";
+    if (typeof beds === "number" && beds >= 3) return "3-bed Flat";
+    return null;
+  }
+  return typeBucket(c); // house/bungalow types read from the comp itself
+}
+function bedBucketSeg(c: MacComp, seg?: MacSegment): string | null {
+  const beds = effBeds(c, seg);
+  if (typeof beds !== "number" || beds < 1) return null;
+  if (beds >= 6) return "6+-bed";
+  return `${beds}-bed`;
 }
 
 function profileRow(label: string, comps: MacComp[], allTotal: number): MacProfileRow {
@@ -221,25 +245,24 @@ function profileRow(label: string, comps: MacComp[], allTotal: number): MacProfi
 }
 
 export function macSummary(mac: Mac): MacSummaryData {
-  const allComps = mac.segments.flatMap((s) => s.comps.filter(isFilledComp));
-
-  // Profile by property type
+  // Bucket every filled comp, inferring its beds/type from its segment when the
+  // comp's own field is blank (so a "2 Bed Flats" segment still summarises even
+  // if beds weren't re-typed on each comp).
   const typeOf = new Map<string, MacComp[]>(TYPE_ROWS.map((r) => [r, []]));
-  for (const c of allComps) {
-    const b = typeBucket(c);
-    if (b) typeOf.get(b)!.push(c);
+  const bedOf = new Map<string, MacComp[]>(BED_ROWS.map((r) => [r, []]));
+  for (const seg of mac.segments) {
+    for (const c of seg.comps.filter(isFilledComp)) {
+      const tb = typeBucketSeg(c, seg);
+      if (tb) typeOf.get(tb)!.push(c);
+      const bb = bedBucketSeg(c, seg);
+      if (bb) bedOf.get(bb)!.push(c);
+    }
   }
+
   const typeTotal = TYPE_ROWS.reduce((n, r) => n + typeOf.get(r)!.length, 0);
   const typeRows = TYPE_ROWS.map((r) => profileRow(r, typeOf.get(r)!, typeTotal));
   const flatsComps = TYPE_ROWS.slice(0, 4).flatMap((r) => typeOf.get(r)!);
   const housesComps = TYPE_ROWS.slice(4).flatMap((r) => typeOf.get(r)!);
-
-  // Profile by number of bedrooms
-  const bedOf = new Map<string, MacComp[]>(BED_ROWS.map((r) => [r, []]));
-  for (const c of allComps) {
-    const b = bedBucket(c);
-    if (b) bedOf.get(b)!.push(c);
-  }
   const bedTotal = BED_ROWS.reduce((n, r) => n + bedOf.get(r)!.length, 0);
   const bedRows = BED_ROWS.map((r) => profileRow(r, bedOf.get(r)!, bedTotal));
 
