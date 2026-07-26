@@ -4,7 +4,7 @@ import { getProperty, getSettings } from "@/lib/db";
 import { dcasStats } from "@/lib/dcasSchema";
 import { ratingLabel, ratingColor } from "@/lib/ratings";
 import { computeIpad } from "@/lib/ipadCalc";
-import { segmentStats, macSummary, pricePerM2, daysOnMarket, type MacProfileRow as _MPR } from "@/lib/macCalc";
+import { segmentStats, macSummary, pricePerM2, daysOnMarket, isFilledComp, type MacProfileRow as _MPR } from "@/lib/macCalc";
 import { evaluateProcedability, statusMeta } from "@/lib/procedability";
 import { gbp, num, pct } from "@/lib/format";
 import { PrintButton } from "@/components/PrintButton";
@@ -22,7 +22,7 @@ export default async function FullReportPage({ params }: { params: { id: string 
   const sm = statusMeta(displayStatus);
   const d = p.dcas ? dcasStats(p.dcas) : null;
   const ipadOut = p.ipad?.inputs.units.length ? computeIpad(p.ipad.inputs) : null;
-  const macData = p.mac && p.mac.segments?.some((s) => s.comps.some((c) => c.property.trim() !== "")) ? macSummary(p.mac) : null;
+  const macData = p.mac && p.mac.segments?.some((s) => s.comps.some(isFilledComp)) ? macSummary(p.mac) : null;
   const printedOn = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
   const inp = p.ipad?.inputs;
 
@@ -183,7 +183,7 @@ export default async function FullReportPage({ params }: { params: { id: string 
 
               {p.mac.segments.map((seg) => {
                 const st = segmentStats(seg, p.mac!.date);
-                const comps = seg.comps.filter((c) => c.property.trim() !== "");
+                const comps = seg.comps.filter(isFilledComp);
                 return (
                   <section key={seg.key} className="mt-4">
                     <h3 className="mb-1 border-b border-paper-line pb-1 font-serif text-[15px] text-ink">{seg.label}</h3>
@@ -210,7 +210,7 @@ export default async function FullReportPage({ params }: { params: { id: string 
                         <tbody>
                           {comps.map((c) => {
                             const ppm2 = pricePerM2(c);
-                            const dom = daysOnMarket(c, p.mac!.date);
+                            const dom = daysOnMarket(c);
                             const extra = [c.condition && `Condition: ${c.condition}`, c.kerbAppeal && `Kerb: ${c.kerbAppeal}`, c.proximity && `Proximity: ${c.proximity}`, c.similarity && `Similarity: ${c.similarity}`, c.m2Source && `m² source: ${c.m2Source}`, c.comments].filter(Boolean).join(" · ");
                             return (
                               <FragmentRow key={c.id} extra={extra}>

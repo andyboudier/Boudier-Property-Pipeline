@@ -3,6 +3,7 @@ import { listProperties, getSettings } from "@/lib/db";
 import { evaluateProcedability } from "@/lib/procedability";
 import { dcasStats } from "@/lib/dcasSchema";
 import { computeIpad } from "@/lib/ipadCalc";
+import { isFilledComp } from "@/lib/macCalc";
 import { SearchTable, type Row } from "@/components/SearchTable";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ export default async function PipelinePage() {
       score: result.score,
       dcasPct: d.total ? d.answered / d.total : 0,
       dcasStarted: d.answered > 0,
-      macStarted: !!p.mac?.segments?.some((s) => s.comps.some((c) => c.property.trim() !== "")),
+      macStarted: !!p.mac?.segments?.some((s) => s.comps.some(isFilledComp)),
       ipadStarted: !!p.ipad?.inputs.units.length,
       profitOnGdv: ipadOut?.profitOnGdvPct ?? null,
     };

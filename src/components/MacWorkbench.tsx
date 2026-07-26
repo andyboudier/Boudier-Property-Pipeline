@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { Mac, MacComp, MacSegment, MacSearchParams, MacSearchFilters } from "@/lib/types";
-import { MAC_OPTIONS, MAC_RADIUS_OPTIONS, MAC_PROPERTY_TYPES, DEFAULT_SEARCH, emptyComp, emptySegment, segmentStats, pricePerM2, daysOnMarket } from "@/lib/macCalc";
+import { MAC_OPTIONS, MAC_RADIUS_OPTIONS, MAC_PROPERTY_TYPES, DEFAULT_SEARCH, emptyComp, emptySegment, segmentStats, pricePerM2, daysOnMarket, isFilledComp } from "@/lib/macCalc";
 import { actionSaveMac, actionResearchMac } from "@/app/actions";
 import { gbp, num } from "@/lib/format";
 import { useAutosave } from "@/lib/useAutosave";
@@ -58,7 +58,7 @@ export function MacWorkbench({ propertyId, initial }: { propertyId: string; init
               link: c.link,
               comments: c.comments,
             }));
-            const filled = next.segments[0].comps.filter((c) => c.property.trim() !== "");
+            const filled = next.segments[0].comps.filter(isFilledComp);
             next.segments = next.segments.map((s, idx) => (idx !== 0 ? s : { ...s, comps: filled.length ? [...filled, ...newComps] : newComps }));
           }
           return next;
@@ -335,7 +335,7 @@ function SegmentBlock({
       <div className="space-y-3 px-5 py-4">
         {seg.comps.map((comp, i) => {
           const ppm2 = pricePerM2(comp);
-          const dom = daysOnMarket(comp, refDate);
+          const dom = daysOnMarket(comp);
           return (
             <div key={comp.id} className="rounded-lg border border-paper-line p-3">
               <div className="mb-2 flex items-center justify-between">

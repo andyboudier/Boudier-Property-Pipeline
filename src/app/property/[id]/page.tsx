@@ -5,7 +5,7 @@ import { ONEDRIVE_ROOT } from "@/lib/constants";
 import { evaluateProcedability } from "@/lib/procedability";
 import { dcasStats } from "@/lib/dcasSchema";
 import { computeIpad } from "@/lib/ipadCalc";
-import { segmentStats } from "@/lib/macCalc";
+import { segmentStats, isFilledComp } from "@/lib/macCalc";
 import { StatusBadge, ChecksPanel } from "@/components/Procedability";
 import { DeletePropertyButton } from "@/components/DeletePropertyButton";
 import { gbp, num, pct, sqftToSqmDisplay } from "@/lib/format";
@@ -19,7 +19,7 @@ export default async function PropertyOverview({ params }: { params: { id: strin
   const result = evaluateProcedability(p, settings);
   const d = dcasStats(p.dcas);
   const ipadOut = p.ipad?.inputs.units.length ? computeIpad(p.ipad.inputs) : null;
-  const macSeg = p.mac?.segments?.find((s) => s.comps.some((c) => c.property.trim() !== ""));
+  const macSeg = p.mac?.segments?.find((s) => s.comps.some(isFilledComp));
   const macStats = macSeg ? segmentStats(macSeg, p.mac?.date ?? "") : null;
 
   const stages = [

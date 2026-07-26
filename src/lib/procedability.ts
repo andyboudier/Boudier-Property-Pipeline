@@ -6,7 +6,7 @@ import type {
 } from "./types";
 import { dcasStats } from "./dcasSchema";
 import { computeIpad } from "./ipadCalc";
-import { segmentStats } from "./macCalc";
+import { segmentStats, isFilledComp } from "./macCalc";
 
 // Default, configurable thresholds. Override via the Settings page (stored at
 // settings/procedability in Firestore) — see lib/db.ts.
@@ -143,7 +143,7 @@ export function evaluateProcedability(
 
   // 4. MAC DEMAND (soft) ──────────────────────────────────────────────────────
   const macSegs = p.mac?.segments ?? [];
-  const segWithData = macSegs.find((s) => s.comps.some((c) => c.property.trim() !== ""));
+  const segWithData = macSegs.find((s) => s.comps.some(isFilledComp));
   if (!segWithData) {
     checks.push({ key: "mac", label: "MAC demand", outcome: "na", detail: "No comparable evidence captured." });
   } else {

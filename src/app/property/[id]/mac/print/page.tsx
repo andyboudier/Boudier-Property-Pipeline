@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProperty } from "@/lib/db";
-import { emptyMac, segmentStats, pricePerM2 } from "@/lib/macCalc";
+import { emptyMac, segmentStats, pricePerM2, isFilledComp } from "@/lib/macCalc";
 import { gbp, num, pct } from "@/lib/format";
 import { PrintButton } from "@/components/PrintButton";
 
@@ -13,7 +13,7 @@ export default async function MacPrintPage({ params }: { params: { id: string } 
 
   const mac = p.mac ?? emptyMac(p.name);
   const printedOn = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
-  const segments = mac.segments.filter((s) => s.comps.some((c) => c.property.trim() !== ""));
+  const segments = mac.segments.filter((s) => s.comps.some(isFilledComp));
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -47,7 +47,7 @@ export default async function MacPrintPage({ params }: { params: { id: string } 
 
         {segments.map((seg) => {
           const stats = segmentStats(seg, mac.date);
-          const comps = seg.comps.filter((c) => c.property.trim() !== "");
+          const comps = seg.comps.filter(isFilledComp);
           return (
             <section key={seg.key} className="print-break mt-6">
               <h3 className="mb-1 border-b border-paper-line pb-1 font-serif text-base text-ink">{seg.label}</h3>

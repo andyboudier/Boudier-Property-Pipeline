@@ -108,12 +108,24 @@ export interface SegmentStats {
   salesRatio: number;
 }
 
-function daysOnMarket(comp: MacComp, refDate: string): number | null {
+// A comp counts as a real comparable if it has ANY meaningful data — not only
+// when the address (property) field is filled — so rows entered with just a
+// price/beds/m² still count towards totals and averages.
+export function isFilledComp(c: MacComp): boolean {
+  return (
+    c.property.trim() !== "" ||
+    c.askingPrice != null ||
+    c.totalM2 != null ||
+    typeof c.beds === "number"
+  );
+}
+
+// Days on market = from the date added (onMarketSince) to TODAY.
+function daysOnMarket(comp: MacComp): number | null {
   if (!comp.onMarketSince) return null;
   const start = new Date(comp.onMarketSince).getTime();
-  const ref = refDate ? new Date(refDate).getTime() : Date.now();
   if (isNaN(start)) return null;
-  return Math.max(0, Math.round((ref - start) / 86_400_000));
+  return Math.max(0, Math.round((Date.now() - start) / 86_400_000));
 }
 
 export function pricePerM2(comp: MacComp): number | null {
@@ -126,12 +138,13 @@ function avg(nums: number[]): number {
   return v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0;
 }
 
-export function segmentStats(seg: MacSegment, refDate: string): SegmentStats {
-  const filled = seg.comps.filter((c) => c.property.trim() !== "");
+export function segmentStats(seg: MacSegment, _refDate?: string): SegmentStats {
+  const filled = seg.comps.filter(isFilledComp);
   const m2s = filled.map((c) => c.totalM2).filter((n): n is number => typeof n === "number" && n > 0);
   const ppm2 = filled.map(pricePerM2).filter((n): n is number => n !== null);
   const prices = filled.map((c) => c.askingPrice).filter((n): n is number => typeof n === "number");
-  const doms = filled.map((c) => daysOnMarket(c, refDate)).filter((n): n is number => n !== null);
+  // Days on market to today, averaged over the comps that have a date added.
+  const doms = filled.map((c) => daysOnMarket(c)).filter((n): n is number => n !== null);
 
   const totalProperties = seg.totalIncSstc ?? filled.length;
   const unsold = seg.totalExcSstc ?? filled.filter((c) => !SOLD_STATUSES.includes(c.status)).length;
@@ -208,7 +221,7 @@ function profileRow(label: string, comps: MacComp[], allTotal: number): MacProfi
 }
 
 export function macSummary(mac: Mac): MacSummaryData {
-  const allComps = mac.segments.flatMap((s) => s.comps.filter((c) => c.property.trim() !== ""));
+  const allComps = mac.segments.flatMap((s) => s.comps.filter(isFilledComp));
 
   // Profile by property type
   const typeOf = new Map<string, MacComp[]>(TYPE_ROWS.map((r) => [r, []]));
