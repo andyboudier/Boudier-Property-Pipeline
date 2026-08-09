@@ -8,6 +8,7 @@ import { actionSaveIpad, actionResearchIpad } from "@/app/actions";
 import { gbp, num, pct } from "@/lib/format";
 import { useAutosave } from "@/lib/useAutosave";
 import { IpadProjectCosts } from "./IpadProjectCosts";
+import { NumberInput } from "./NumberInput";
 
 type Kind = "money" | "num" | "pct" | "months";
 export function IpadForm({ propertyId, initial }: { propertyId: string; initial: Ipad }) {
@@ -168,10 +169,10 @@ export function IpadForm({ propertyId, initial }: { propertyId: string; initial:
                   {inp.units.map((u, i) => (
                     <tr key={u.id} className="border-t border-paper-line">
                       <td className="py-1.5 pr-2 tabular-nums text-ink-muted">{i + 1}</td>
-                      <td className="py-1.5 pr-2"><input type="number" className="field-sm w-16" value={u.units || ""} onChange={(e) => setUnit(u.id, { units: Number(e.target.value) || 0 })} /></td>
+                      <td className="py-1.5 pr-2"><NumberInput className="field-sm w-16" value={u.units} onChange={(n) => setUnit(u.id, { units: n })} /></td>
                       <td className="py-1.5 pr-2"><input className="field-sm" value={u.type} onChange={(e) => setUnit(u.id, { type: e.target.value })} /></td>
-                      <td className="py-1.5 pr-2"><input type="number" className="field-sm w-20" value={u.m2 || ""} onChange={(e) => setUnit(u.id, { m2: Number(e.target.value) || 0 })} /></td>
-                      <td className="py-1.5 pr-2"><input type="number" className="field-sm w-28" value={u.totalGdv || ""} onChange={(e) => setUnit(u.id, { totalGdv: Number(e.target.value) || 0 })} /></td>
+                      <td className="py-1.5 pr-2"><NumberInput className="field-sm w-20" value={u.m2} onChange={(n) => setUnit(u.id, { m2: n })} /></td>
+                      <td className="py-1.5 pr-2"><NumberInput className="field-sm w-28" value={u.totalGdv} onChange={(n) => setUnit(u.id, { totalGdv: n })} /></td>
                       <td className="py-1.5"><button onClick={() => removeUnit(u.id)} className="text-ink-muted hover:text-status-stop">✕</button></td>
                     </tr>
                   ))}
@@ -258,16 +259,10 @@ function NumField({
         {kind === "money" && <span className="text-bronze-dark">£</span>}
         {kind === "pct" && <span className="text-bronze-dark">%</span>}
       </span>
-      <input
-        type="number"
+      <NumberInput
         className="field-sm tabular-nums"
-        value={display || ""}
-        step={kind === "pct" ? 0.1 : kind === "months" ? 1 : 1}
-        onChange={(e) => {
-          const raw = Number(e.target.value);
-          const safe = isNaN(raw) ? 0 : raw;
-          onChange(kind === "pct" ? safe / 100 : safe);
-        }}
+        value={display}
+        onChange={(n) => onChange(kind === "pct" ? n / 100 : n)}
       />
       {hint && <span className="mt-0.5 block text-[10px] text-ink-muted">{hint}</span>}
     </label>

@@ -3,6 +3,7 @@
 import type { IpadInputs } from "@/lib/types";
 import type { IpadOutputs } from "@/lib/ipadCalc";
 import { gbp } from "@/lib/format";
+import { NumberInput } from "./NumberInput";
 
 type SetFn = <K extends keyof IpadInputs>(key: K, value: IpadInputs[K]) => void;
 type OverrideFn = (key: string, value: number | null) => void;
@@ -122,11 +123,10 @@ function Money({ label, k, inp, set, comment }: { label: string; k: keyof IpadIn
     <tr className="border-t border-paper-line/70">
       <Td>{label}</Td>
       <td className="px-3 py-1.5 text-right">
-        <input
-          type="number"
+        <NumberInput
           className="field-sm w-32 text-right tabular-nums"
-          value={(inp[k] as number) || ""}
-          onChange={(e) => set(k, (Number(e.target.value) || 0) as IpadInputs[typeof k])}
+          value={(inp[k] as number) || 0}
+          onChange={(n) => set(k, n as IpadInputs[typeof k])}
         />
       </td>
       <Td muted>{comment}</Td>
@@ -142,7 +142,7 @@ function Rate({ label, k, inp, area, set }: { label: string; k: keyof IpadInputs
       <CostCell value={area * rate} />
       <td className="px-4 py-1.5">
         <span className="inline-flex items-center gap-1.5">
-          <input type="number" className="field-sm w-24 tabular-nums" value={rate || ""} onChange={(e) => set(k, (Number(e.target.value) || 0) as IpadInputs[typeof k])} />
+          <NumberInput className="field-sm w-24 tabular-nums" value={rate} onChange={(n) => set(k, n as IpadInputs[typeof k])} />
           <span className="text-xs text-ink-muted">per m²</span>
         </span>
       </td>
@@ -167,15 +167,13 @@ function Pct({ label, k, inp, out, set, setOverride, of }: { label: string; k: k
             <button type="button" className={tBtn(isFixed)} onClick={() => setOverride(k as string, computed)} title="Enter a fixed £ amount instead">£</button>
           </span>
           {isFixed ? (
-            <input type="number" className="field-sm w-28 tabular-nums" value={(override as number) || ""} onChange={(e) => setOverride(k as string, Number(e.target.value) || 0)} />
+            <NumberInput className="field-sm w-28 tabular-nums" value={(override as number) || 0} onChange={(n) => setOverride(k as string, n)} />
           ) : (
             <>
-              <input
-                type="number"
-                step="0.1"
+              <NumberInput
                 className="field-sm w-16 tabular-nums"
-                value={pctVal ? +(pctVal * 100).toFixed(3) : ""}
-                onChange={(e) => set(k, ((Number(e.target.value) || 0) / 100) as IpadInputs[typeof k])}
+                value={pctVal ? +(pctVal * 100).toFixed(3) : 0}
+                onChange={(n) => set(k, (n / 100) as IpadInputs[typeof k])}
               />
               <span className="text-xs text-ink-muted">% {of}</span>
             </>
@@ -203,12 +201,12 @@ function Bridge({ label, monthsK, rateK, inp, value, set, setOverride }: { label
             <button type="button" className={tBtn(isFixed)} onClick={() => setOverride(rateK as string, value)} title="Enter a fixed £ amount instead">£</button>
           </span>
           {isFixed ? (
-            <input type="number" className="field-sm w-28 tabular-nums" value={(override as number) || ""} onChange={(e) => setOverride(rateK as string, Number(e.target.value) || 0)} />
+            <NumberInput className="field-sm w-28 tabular-nums" value={(override as number) || 0} onChange={(n) => setOverride(rateK as string, n)} />
           ) : (
             <>
-              <input type="number" className="field-sm w-16 tabular-nums" value={months || ""} onChange={(e) => set(monthsK, (Number(e.target.value) || 0) as IpadInputs[typeof monthsK])} />
+              <NumberInput className="field-sm w-16 tabular-nums" value={months} onChange={(n) => set(monthsK, n as IpadInputs[typeof monthsK])} />
               <span className="text-xs text-ink-muted">months @</span>
-              <input type="number" step="0.1" className="field-sm w-16 tabular-nums" value={rate ? +(rate * 100).toFixed(3) : ""} onChange={(e) => set(rateK, ((Number(e.target.value) || 0) / 100) as IpadInputs[typeof rateK])} />
+              <NumberInput className="field-sm w-16 tabular-nums" value={rate ? +(rate * 100).toFixed(3) : 0} onChange={(n) => set(rateK, (n / 100) as IpadInputs[typeof rateK])} />
               <span className="text-xs text-ink-muted">% interest</span>
             </>
           )}
