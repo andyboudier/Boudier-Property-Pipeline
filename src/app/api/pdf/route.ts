@@ -9,7 +9,7 @@ export const maxDuration = 60;
 // print dialog, no site chrome, no user-agent headers/footers.
 //
 // Only same-origin report paths are allowed (never arbitrary URLs).
-const ALLOWED_PATH = /^\/property\/[a-z0-9-]+\/(report|presentation|(dcas|mac|ipad)\/print)$/;
+const ALLOWED_PATH = /^\/property\/[a-z0-9-]+\/(report|presentation|ipad\/table|(dcas|mac|ipad)\/print)$/;
 
 export async function GET(req: NextRequest) {
   const path = req.nextUrl.searchParams.get("path") || "";

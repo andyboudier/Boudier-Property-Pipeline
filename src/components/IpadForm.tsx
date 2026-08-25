@@ -106,6 +106,7 @@ export function IpadForm({ propertyId, initial }: { propertyId: string; initial:
             <button onClick={researchFill} disabled={researching} className="btn-ghost disabled:opacity-60" title="Research the property with AI and fill empty inputs">
               {researching ? "Researching…" : "✨ AI auto-fill"}
             </button>
+            <Link href={`/property/${propertyId}/ipad/table`} className="btn-ghost">Table view</Link>
             <Link href={`/property/${propertyId}/ipad/print`} className="btn-ghost">PDF / Print</Link>
             <button onClick={saveNow} disabled={pending} className="btn-primary disabled:opacity-60">
               {pending ? "Saving…" : "Save now"}
