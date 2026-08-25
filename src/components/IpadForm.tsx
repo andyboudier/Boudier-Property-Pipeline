@@ -174,7 +174,7 @@ export function IpadForm({ propertyId, initial }: { propertyId: string; initial:
                       <td className="py-1.5 pr-2"><input className="field-sm" value={u.type} onChange={(e) => setUnit(u.id, { type: e.target.value })} /></td>
                       <td className="py-1.5 pr-2"><NumberInput className="field-sm w-20" value={u.m2} onChange={(n) => setUnit(u.id, { m2: n })} /></td>
                       <td className="py-1.5 pr-2"><NumberInput className="field-sm w-28" value={u.totalGdv} onChange={(n) => setUnit(u.id, { totalGdv: n })} /></td>
-                      <td className="py-1.5"><button onClick={() => removeUnit(u.id)} className="text-ink-muted hover:text-status-stop">✕</button></td>
+                      <td className="py-1.5"><button onClick={() => removeUnit(u.id)} className="text-ink-muted hover:text-status-stop" title="Remove this unit line" aria-label="Remove this unit line">✕</button></td>
                     </tr>
                   ))}
                   {inp.units.length === 0 && (

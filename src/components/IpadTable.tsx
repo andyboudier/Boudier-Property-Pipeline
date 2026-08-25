@@ -36,7 +36,6 @@ export function IpadTable({
   const commercialFinance = Math.max(out.totalPurchaseCosts - inp.privateFinance, 0); // G53
   const costOfCommercialFinance = out.totalPurchaseFinance - (fa.privateFinanceRatePerMonth ?? 0); // G59
   const units = inp.units ?? [];
-  const blankUnitRows = Math.max(0, 18 - units.length); // the sheet has 18 slots (rows 84–101)
 
   function set<K extends keyof IpadInputs>(key: K, value: IpadInputs[K]) {
     setInp((s) => ({ ...s, [key]: value }));
@@ -49,6 +48,13 @@ export function IpadTable({
   }
   function removeUnit(id: string) {
     setInp((s) => ({ ...s, units: s.units.filter((u) => u.id !== id) }));
+  }
+  function duplicateLastUnit() {
+    setInp((s) => {
+      const last = s.units[s.units.length - 1];
+      const copy = last ? { ...last, id: `u${Date.now()}` } : { id: `u${Date.now()}`, units: 1, m2: 0, type: "", totalGdv: 0 };
+      return { ...s, units: [...s.units, copy] };
+    });
   }
 
   // ── cell editors (plain functions, NOT components — a component defined in
@@ -319,8 +325,9 @@ export function IpadTable({
                     <input className={TXT} value={u.type} onChange={(e) => setUnit(u.id, { type: e.target.value })} placeholder="e.g. 2 Bed" />
                     <button
                       onClick={() => removeUnit(u.id)}
-                      className="no-print shrink-0 px-1 text-ink-muted opacity-0 transition group-hover:opacity-100 hover:text-status-stop"
+                      className="no-print shrink-0 px-1 text-ink-muted hover:text-status-stop"
                       title="Remove this unit line"
+                      aria-label="Remove this unit line"
                     >
                       ✕
                     </button>
@@ -332,22 +339,23 @@ export function IpadTable({
                 <Cell span={4} right>{u.totalGdv && u.m2 ? gbp(u.totalGdv / u.m2) : ""}</Cell>
               </tr>
             ))}
-            {Array.from({ length: blankUnitRows }).map((_, i) => (
-              <tr key={`blank-${i}`}>
-                <Cell />
-                <Cell />
-                <Cell />
-                <Cell span={3}>
-                  {i === 0 && (
-                    <button onClick={addUnit} className="no-print text-[11px] font-medium text-bronze-dark hover:underline">
-                      + Add unit line
-                    </button>
-                  )}
+            {units.length === 0 && (
+              <tr>
+                <Cell span={11} className="border border-[#DDDBD6] px-2 py-3 text-center text-ink-muted">
+                  No unit lines yet — add one below.
                 </Cell>
-                <Cell />
-                <Cell span={4} />
               </tr>
-            ))}
+            )}
+            <tr className="no-print">
+              <td colSpan={11} className="px-2 py-1.5">
+                <span className="flex items-center gap-2">
+                  <button onClick={addUnit} className="btn-ghost px-3 py-1 text-xs">+ Add unit line</button>
+                  <button onClick={duplicateLastUnit} disabled={!units.length} className="btn-ghost px-3 py-1 text-xs disabled:opacity-50">
+                    Copy last line
+                  </button>
+                </span>
+              </td>
+            </tr>
             <Total label="Total Development Projected Sale Value (GDV)" value={out.gdv} />
             <tr>
               <Cell span={6}>Valuation Report:</Cell>
@@ -375,22 +383,6 @@ export function IpadTable({
               <Cell span={2} bold nowrap>% Profit on GDV</Cell>
             </tr>
 
-            <Spacer />
-            <Spacer />
-
-            {/* ── Sign-off (rows 116–118) ── */}
-            <tr>
-              <Cell span={4} bold>Submitted &amp; Reviewed By:</Cell>
-              <Cell span={2} className="border-b border-ink/40" />
-              <Cell bold>Signed:</Cell>
-              <Cell span={4} className="border-b border-ink/40" />
-            </tr>
-            <Spacer />
-            <tr>
-              <Cell bold>Date:</Cell>
-              <Cell span={2} className="border-b border-ink/40" />
-              <Cell span={8} />
-            </tr>
           </tbody>
         </table>
       </div>
