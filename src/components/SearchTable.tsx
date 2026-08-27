@@ -31,6 +31,26 @@ export interface Row {
   profitOnGdv: number | null;
 }
 
+type SortKey = "name" | "town" | "sizeSqFt" | "guidePrice" | "profitOnGdv" | "stages" | "status";
+const NUMERIC_KEYS: SortKey[] = ["sizeSqFt", "guidePrice", "profitOnGdv", "stages"];
+// Status sorts in workflow order rather than alphabetically.
+const STATUS_RANK: Record<string, number> = { review: 0, proceedable: 1, sold: 2, "not-proceedable": 3, incomplete: 4 };
+const COLUMNS: { key: SortKey | null; label: string }[] = [
+  { key: "name", label: "Property" },
+  { key: "town", label: "Area (Town & LPA)" },
+  { key: "sizeSqFt", label: "Size" },
+  { key: "guidePrice", label: "Guide" },
+  { key: "profitOnGdv", label: "Profit/GDV" },
+  { key: "stages", label: "Stages" },
+  { key: "status", label: "Procedable" },
+  { key: null, label: "actions" },
+];
+
+function SortArrow({ dir }: { dir: "asc" | "desc" | null }) {
+  if (!dir) return <span className="text-[9px] opacity-30">↕</span>;
+  return <span className="text-[9px]">{dir === "asc" ? "▲" : "▼"}</span>;
+}
+
 const FILTERS: { key: ProcedabilityStatus | "all"; label: string }[] = [
   { key: "all", label: "All" },
   { key: "proceedable", label: "Proceedable" },
@@ -43,6 +63,16 @@ const FILTERS: { key: ProcedabilityStatus | "all"; label: string }[] = [
 export function SearchTable({ rows }: { rows: Row[] }) {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<ProcedabilityStatus | "all">("review"); // land on what needs attention
+  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" } | null>(null);
+
+  // Click a column header to sort; click again to flip the direction.
+  function toggleSort(key: SortKey) {
+    setSort((s) =>
+      s && s.key === key
+        ? { key, dir: s.dir === "asc" ? "desc" : "asc" }
+        : { key, dir: NUMERIC_KEYS.includes(key) ? "desc" : "asc" }, // numbers: biggest first
+    );
+  }
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -52,6 +82,32 @@ export function SearchTable({ rows }: { rows: Row[] }) {
       return [r.name, r.town, r.lpa, r.currentUse].join(" ").toLowerCase().includes(needle);
     });
   }, [rows, q, filter]);
+
+  const sorted = useMemo(() => {
+    if (!sort) return filtered;
+    const dir = sort.dir === "asc" ? 1 : -1;
+    const value = (r: Row): string | number | null => {
+      switch (sort.key) {
+        case "name": return r.name.toLowerCase();
+        case "town": return `${r.town} ${r.lpa}`.trim().toLowerCase();
+        case "sizeSqFt": return r.sizeSqFt;
+        case "guidePrice": return r.guidePrice;
+        case "profitOnGdv": return r.profitOnGdv;
+        case "stages": return (r.dcasStarted ? 1 : 0) + (r.macStarted ? 1 : 0) + (r.ipadStarted ? 1 : 0) + r.dcasPct;
+        case "status": return STATUS_RANK[r.status] ?? 99;
+      }
+    };
+    return [...filtered].sort((a, b) => {
+      const av = value(a);
+      const bv = value(b);
+      // Blanks always sink to the bottom, whichever way you sort.
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      if (typeof av === "string" && typeof bv === "string") return av.localeCompare(bv) * dir;
+      return ((av as number) - (bv as number)) * dir;
+    });
+  }, [filtered, sort]);
 
   const counts = useMemo(
     () => ({
@@ -65,11 +121,11 @@ export function SearchTable({ rows }: { rows: Row[] }) {
   );
 
   const CARDS: { key: ProcedabilityStatus | "all"; label: string; color: string }[] = [
-    { key: "all", label: "Sites", color: "#16202B" },
-    { key: "proceedable", label: "Proceedable", color: "#2E7D5B" },
     { key: "review", label: "Review", color: "#C2872B" },
-    { key: "not-proceedable", label: "Not proceedable", color: "#B23A48" },
+    { key: "proceedable", label: "Proceedable", color: "#2E7D5B" },
     { key: "sold", label: "Sold", color: "#4F6D7A" },
+    { key: "not-proceedable", label: "Not proceedable", color: "#B23A48" },
+    { key: "all", label: "Sites", color: "#16202B" },
   ];
 
   return (
@@ -136,18 +192,27 @@ export function SearchTable({ rows }: { rows: Row[] }) {
         <table className="w-full min-w-[820px] text-left text-sm">
           <thead>
             <tr className="border-b border-paper-line text-[11px] uppercase tracking-wide text-ink-muted">
-              <th className="px-4 py-2.5 font-medium">Property</th>
-              <th className="px-4 py-2.5 font-medium">Area (Town &amp; LPA)</th>
-              <th className="px-4 py-2.5 font-medium">Size</th>
-              <th className="px-4 py-2.5 font-medium">Guide</th>
-              <th className="px-4 py-2.5 font-medium">Profit/GDV</th>
-              <th className="px-4 py-2.5 font-medium">Stages</th>
-              <th className="px-4 py-2.5 font-medium">Procedable</th>
-              <th className="px-4 py-2.5 font-medium"><span className="sr-only">Actions</span></th>
+              {COLUMNS.map((c) => (
+                <th key={c.label} className="px-4 py-2.5 font-medium">
+                  {c.key ? (
+                    <button
+                      onClick={() => toggleSort(c.key as SortKey)}
+                      title={`Sort by ${c.label}`}
+                      className="inline-flex items-center gap-1 uppercase tracking-wide transition hover:text-ink"
+                      style={sort?.key === c.key ? { color: "#16202B" } : undefined}
+                    >
+                      {c.label}
+                      <SortArrow dir={sort?.key === c.key ? sort.dir : null} />
+                    </button>
+                  ) : (
+                    <span className="sr-only">Actions</span>
+                  )}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {filtered.map((r) => (
+            {sorted.map((r) => (
               <tr key={r.id} className="group border-b border-paper-line/70 last:border-0 hover:bg-paper-warm/60">
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
@@ -201,7 +266,9 @@ export function SearchTable({ rows }: { rows: Row[] }) {
   );
 }
 
-const STATUS_OPTIONS: ProcedabilityStatus[] = ["proceedable", "review", "not-proceedable", "sold", "incomplete"];
+// "incomplete" is no longer offered as a manual choice — it stays available
+// only on a site that was already set to it, so existing data still displays.
+const STATUS_OPTIONS: ProcedabilityStatus[] = ["proceedable", "review", "not-proceedable", "sold"];
 
 function StatusSelect({ id, value, autoStatus, overridden }: { id: string; value: ProcedabilityStatus; autoStatus: ProcedabilityStatus; overridden?: boolean }) {
   const router = useRouter();
@@ -227,7 +294,7 @@ function StatusSelect({ id, value, autoStatus, overridden }: { id: string; value
         style={{ borderColor: `${m.color}55`, background: `${m.color}14`, color: m.color }}
       >
         <option value="auto">Auto · {statusMeta(autoStatus).label}</option>
-        {STATUS_OPTIONS.map((s) => (
+        {(overridden && value === "incomplete" ? [...STATUS_OPTIONS, "incomplete" as ProcedabilityStatus] : STATUS_OPTIONS).map((s) => (
           <option key={s} value={s}>
             {statusMeta(s).label}
           </option>
