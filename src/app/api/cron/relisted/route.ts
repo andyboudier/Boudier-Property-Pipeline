@@ -17,8 +17,15 @@ export const maxDuration = 60;
 //      set the pipeline status to review yet (covers the race where
 //      /api/cron/scan re-checks the listing first and clears marketStatus).
 //
-// Auth: Bearer DIGEST_TOKEN if configured, else Bearer CRON_SECRET, or a
-// Vercel cron request. It writes, so it is never open.
+// Auth: DIGEST_TOKEN if configured, else CRON_SECRET — sent either as an
+// "Authorization: Bearer <token>" header or, for callers that cannot set
+// headers, as a ?token=<token> query parameter. Vercel cron requests are also
+// accepted. It writes, so it is never open.
+//
+// NOTE: the query-param form puts the token in request logs. It exists because
+// the daily digest runs in a sandbox whose only routes to this host (WebFetch /
+// the Vercel MCP fetch) cannot set request headers. Rotate DIGEST_TOKEN in
+// Vercel if it is ever exposed; it unlocks nothing but this endpoint.
 // ──────────────────────────────────────────────────────────────────────────
 
 const SOLD_ONLY = ["Sold"];
@@ -49,9 +56,11 @@ export async function GET(req: NextRequest) {
       { status: 503 },
     );
   }
-  const authed =
-    req.headers.get("authorization") === `Bearer ${token}` ||
-    req.headers.get("x-vercel-cron") != null;
+  const presented =
+    req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim() ||
+    req.nextUrl.searchParams.get("token")?.trim() ||
+    "";
+  const authed = presented === token || req.headers.get("x-vercel-cron") != null;
   if (!authed) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
 
   // ?scope=gone widens the trigger from Sold to Sold + Under Offer + Withdrawn.
