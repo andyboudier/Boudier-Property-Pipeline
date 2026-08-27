@@ -57,7 +57,6 @@ const FILTERS: { key: ProcedabilityStatus | "all"; label: string }[] = [
   { key: "review", label: "Review" },
   { key: "not-proceedable", label: "Not proceedable" },
   { key: "sold", label: "Sold" },
-  { key: "incomplete", label: "Incomplete" },
 ];
 
 export function SearchTable({ rows }: { rows: Row[] }) {
@@ -159,9 +158,9 @@ export function SearchTable({ rows }: { rows: Row[] }) {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search address, town or LPA…"
-            className="field pl-9"
+            className="field !pr-9"
           />
-          <svg className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-ink-muted" viewBox="0 0 20 20" fill="none">
+          <svg className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-ink-muted" viewBox="0 0 20 20" fill="none">
             <circle cx="9" cy="9" r="6" stroke="currentColor" strokeWidth="1.6" />
             <path d="m14 14 3 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
           </svg>
