@@ -7,6 +7,32 @@ export const sqmToSqft = (sqm: number) => sqm / SQM_PER_SQFT;
 /** Today's date as an ISO yyyy-mm-dd string (server timezone). */
 export const todayISO = () => new Date().toISOString().slice(0, 10);
 
+/**
+ * The IPAD inputs for a property: what was saved, or a fresh set seeded from
+ * the property record (area from sq ft, purchase price from the guide price).
+ *
+ * Every surface that reads an IPAD must go through this — the screens used to
+ * seed these values while the Excel export and the print view fell back to bare
+ * defaults, so an unsaved IPAD showed the right figures on screen and exported
+ * as zeros.
+ */
+export function ipadInputsForProperty(p: {
+  ipad?: { inputs: IpadInputs };
+  sizeSqFt?: number | null;
+  guidePrice?: number | null;
+}): IpadInputs {
+  const inputs =
+    p.ipad?.inputs ??
+    defaultIpadInputs({
+      areaM2: p.sizeSqFt != null ? Math.round(sqftToSqm(p.sizeSqFt)) : 0,
+      purchasePrice: p.guidePrice ?? 0,
+      stampDuty: p.guidePrice != null ? Math.round(p.guidePrice * 0.04) : 0,
+    });
+  // Default the appraisal date for IPADs saved before that field existed.
+  if (!inputs.appraisalDate) inputs.appraisalDate = todayISO();
+  return inputs;
+}
+
 // Default assumptions mirror the IPAD "Foundation" sheet (% of construction cost
 // or % of GDV as noted). All are editable inputs in the UI.
 export function defaultIpadInputs(partial?: Partial<IpadInputs>): IpadInputs {

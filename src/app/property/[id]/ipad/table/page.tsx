@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProperty } from "@/lib/db";
-import { defaultIpadInputs, sqftToSqm, todayISO } from "@/lib/ipadCalc";
+import { ipadInputsForProperty } from "@/lib/ipadCalc";
 import { IpadTable } from "@/components/IpadTable";
 
 export const dynamic = "force-dynamic";
@@ -12,12 +12,7 @@ export default async function IpadTablePage({ params }: { params: { id: string }
   const p = await getProperty(params.id);
   if (!p) notFound();
 
-  const inputs = p.ipad?.inputs ?? defaultIpadInputs({
-    areaM2: p.sizeSqFt != null ? Math.round(sqftToSqm(p.sizeSqFt)) : 0,
-    purchasePrice: p.guidePrice ?? 0,
-    stampDuty: p.guidePrice != null ? Math.round(p.guidePrice * 0.04) : 0,
-  });
-  if (!inputs.appraisalDate) inputs.appraisalDate = todayISO();
+  const inputs = ipadInputsForProperty(p);
 
   return (
     <div className="space-y-4">

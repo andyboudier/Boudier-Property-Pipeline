@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProperty } from "@/lib/db";
-import { computeIpad, defaultIpadInputs } from "@/lib/ipadCalc";
+import { computeIpad, ipadInputsForProperty } from "@/lib/ipadCalc";
 import { gbp, num, pct } from "@/lib/format";
 import { PrintButton } from "@/components/PrintButton";
 
@@ -11,7 +11,7 @@ export default async function IpadPrintPage({ params }: { params: { id: string }
   const p = await getProperty(params.id);
   if (!p) notFound();
 
-  const inputs = p.ipad?.inputs ?? defaultIpadInputs();
+  const inputs = ipadInputsForProperty(p);
   const out = computeIpad(inputs);
   const printedOn = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
   const appraised = inputs.appraisalDate

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import path from "path";
 import { getProperty } from "@/lib/db";
-import { computeIpad, defaultIpadInputs } from "@/lib/ipadCalc";
+import { computeIpad, ipadInputsForProperty } from "@/lib/ipadCalc";
 import type { IpadInputs } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
   const property = await getProperty(id);
   if (!property) return NextResponse.json({ ok: false, error: "not found" }, { status: 404 });
 
-  const inp: IpadInputs = property.ipad?.inputs ?? defaultIpadInputs();
+  const inp: IpadInputs = ipadInputsForProperty(property);
   const out = computeIpad(inp);
   const ov = inp.overrides ?? {};
 
