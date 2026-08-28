@@ -242,7 +242,11 @@ export interface Property {
   listingSource?: string;
   listingUrl?: string;
   notes?: string; // free-text — e.g. listing description/features captured on import
-  documentsUrl?: string; // link to this site's OneDrive documents folder
+  documentsUrl?: string;
+  // Set once the IPAD has been exported to Excel and stored in OneDrive: the
+  // app's IPAD goes read-only and points at the workbook until reverted.
+  ipadExcelUrl?: string;
+  ipadExcelAt?: string; // link to this site's OneDrive documents folder
   imageUrl?: string; // hero image (e.g. from the listing) used on the investor cover
   marketStatus?: string; // "For Sale" | "Under Offer" | "Sold" | "Withdrawn" | "" (from the listing)
   alert?: MarketAlert; // raised when the listing's market status changes

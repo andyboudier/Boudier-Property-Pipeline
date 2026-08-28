@@ -41,7 +41,7 @@ export default async function IpadPage({ params }: { params: { id: string } }) {
         </div>
       </div>
 
-      <IpadForm propertyId={p.id} initial={ipad} />
+      <IpadForm propertyId={p.id} initial={ipad} excelUrl={p.ipadExcelUrl || undefined} excelAt={p.ipadExcelAt || undefined} />
     </div>
   );
 }

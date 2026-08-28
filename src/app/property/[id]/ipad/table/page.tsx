@@ -26,7 +26,7 @@ export default async function IpadTablePage({ params }: { params: { id: string }
           ← IPAD — {p.name}
         </Link>
       </div>
-      <IpadTable propertyId={p.id} initial={inputs} projectAddress={p.name} />
+      <IpadTable propertyId={p.id} initial={inputs} projectAddress={p.name} excelUrl={p.ipadExcelUrl || undefined} excelAt={p.ipadExcelAt || undefined} />
     </div>
   );
 }

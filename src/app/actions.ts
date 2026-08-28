@@ -386,6 +386,14 @@ export async function actionResearchIpad(id: string) {
 }
 
 // ── Project Management — Microsoft Graph (calendar + To Do) ───────────────────
+/** Hand editing back to the app after an Excel export (clears the lock). */
+export async function actionRevertIpadToApp(propertyId: string) {
+  await updateProperty(propertyId, { ipadExcelUrl: "", ipadExcelAt: "" });
+  revalidatePath(`/property/${propertyId}/ipad`);
+  revalidatePath(`/property/${propertyId}/ipad/table`);
+  return { ok: true as const };
+}
+
 export async function actionCreateCalendarEvent(input: {
   subject: string;
   start: string;

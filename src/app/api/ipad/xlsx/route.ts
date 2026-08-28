@@ -150,14 +150,40 @@ export async function GET(req: NextRequest) {
   wb.calcProperties.fullCalcOnLoad = true;
 
   const buffer = await wb.xlsx.writeBuffer();
+  const fileBuf = Buffer.from(buffer);
+  const stem = (property.name || "IPAD").replace(/[^\w\s.-]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || "IPAD";
+
+  // ?save=1 — keep the workbook in the site's OneDrive folder and hand back the
+  // link so it can be opened in Excel from there (permanent, and re-exporting
+  // replaces the same file rather than piling up copies).
+  if (req.nextUrl.searchParams.get("save") === "1") {
+    const { isOneDriveConfigured, uploadToSiteFolder } = await import("@/lib/onedrive");
+    if (!isOneDriveConfigured()) {
+      return NextResponse.json({ ok: false, error: "OneDrive is not configured — the file was downloaded instead." }, { status: 503 });
+    }
+    try {
+      const saved = await uploadToSiteFolder(property.name, `${stem} - IPAD.xlsx`, fileBuf);
+      if (!saved?.webUrl) throw new Error("no webUrl returned");
+      // The workbook is now the master copy: lock the app's IPAD to read-only
+      // until someone reverts it.
+      const { updateProperty } = await import("@/lib/db");
+      await updateProperty(id, { ipadExcelUrl: saved.webUrl, ipadExcelAt: new Date().toISOString() });
+      return NextResponse.json({ ok: true, url: saved.webUrl, name: saved.name });
+    } catch (e) {
+      console.error("IPAD OneDrive save failed:", e);
+      return NextResponse.json(
+        { ok: false, error: e instanceof Error ? e.message : "Could not save to OneDrive" },
+        { status: 502 },
+      );
+    }
+  }
   // Header values must be ASCII, so send a plain filename plus an RFC 5987
   // UTF-8 variant for browsers that support it.
-  const base = (property.name || "IPAD").replace(/[^\w\s.-]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || "IPAD";
-  const ascii = `${base} - IPAD.xlsx`.replace(/[^\x20-\x7E]/g, "");
-  return new NextResponse(Buffer.from(buffer), {
+  const ascii = `${stem} - IPAD.xlsx`.replace(/[^\x20-\x7E]/g, "");
+  return new NextResponse(fileBuf, {
     headers: {
       "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "content-disposition": `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(`${base} - IPAD.xlsx`)}`,
+      "content-disposition": `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(`${stem} - IPAD.xlsx`)}`,
       "cache-control": "no-store",
     },
   });

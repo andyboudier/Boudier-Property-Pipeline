@@ -7,6 +7,8 @@ import { computeIpad, sqmToSqft } from "@/lib/ipadCalc";
 import { actionSaveIpad } from "@/app/actions";
 import { useAutosave } from "@/lib/useAutosave";
 import { NumberInput } from "./NumberInput";
+import { ExportExcelButton } from "./ExportExcelButton";
+import { IpadExcelBanner } from "./IpadExcelBanner";
 import { PrintButton } from "./PrintButton";
 import { gbp, num, pct } from "@/lib/format";
 
@@ -20,13 +22,18 @@ export function IpadTable({
   propertyId,
   initial,
   projectAddress,
+  excelUrl,
+  excelAt,
 }: {
   propertyId: string;
   initial: IpadInputs;
   projectAddress: string;
+  excelUrl?: string;
+  excelAt?: string;
 }) {
+  const locked = !!excelUrl; // exported to Excel — the workbook is the master
   const [inp, setInp] = useState<IpadInputs>(initial);
-  const { status, savedAt, dirty, saveNow } = useAutosave(inp, (v) => actionSaveIpad(propertyId, { inputs: v }));
+  const { status, savedAt, dirty, saveNow } = useAutosave(inp, (v) => (locked ? Promise.resolve() : actionSaveIpad(propertyId, { inputs: v })));
   const out = useMemo(() => computeIpad(inp), [inp]);
 
   const area = inp.areaM2 || 0;
@@ -108,7 +115,7 @@ export function IpadTable({
         </div>
         <div className="flex items-center gap-2">
           <Link href={`/property/${propertyId}/ipad`} className="btn-ghost">Form view</Link>
-          <a href={`/api/ipad/xlsx?id=${propertyId}`} className="btn-ghost" title="Export into the IPAD Excel template (formulas kept)">Export to Excel</a>
+          <ExportExcelButton propertyId={propertyId} />
           <PrintButton label="Download table as PDF" />
           <button onClick={saveNow} disabled={status === "saving"} className="btn-primary disabled:opacity-60">
             {status === "saving" ? "Saving…" : "Save now"}
@@ -116,6 +123,9 @@ export function IpadTable({
         </div>
       </div>
 
+      {locked && <IpadExcelBanner propertyId={propertyId} url={excelUrl!} at={excelAt} />}
+
+      <fieldset disabled={locked} className={`min-w-0 border-0 p-0 ${locked ? "opacity-75" : ""}`}>
       <div className="print-page overflow-x-auto rounded-lg border border-paper-line bg-white p-4 shadow-sm print:border-0 print:p-0 print:shadow-none">
         <table className="min-w-[1000px] border-collapse text-[12px] leading-tight text-ink">
           <colgroup>
@@ -387,6 +397,7 @@ export function IpadTable({
           </tbody>
         </table>
       </div>
+      </fieldset>
       <p className="no-print text-[11px] text-ink-muted">
         Editable — white cells are inputs, shaded totals and £ amounts driven by a % recalculate live (as in the
         spreadsheet). Changes autosave and appear on the IPAD form too.

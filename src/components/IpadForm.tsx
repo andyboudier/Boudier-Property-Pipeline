@@ -9,13 +9,16 @@ import { gbp, num, pct } from "@/lib/format";
 import { useAutosave } from "@/lib/useAutosave";
 import { IpadProjectCosts } from "./IpadProjectCosts";
 import { NumberInput } from "./NumberInput";
+import { ExportExcelButton } from "./ExportExcelButton";
+import { IpadExcelBanner } from "./IpadExcelBanner";
 
 type Kind = "money" | "num" | "pct" | "months";
-export function IpadForm({ propertyId, initial }: { propertyId: string; initial: Ipad }) {
+export function IpadForm({ propertyId, initial, excelUrl, excelAt }: { propertyId: string; initial: Ipad; excelUrl?: string; excelAt?: string }) {
+  const locked = !!excelUrl; // exported to Excel — the workbook is the master
   const [inp, setInp] = useState<IpadInputs>(initial.inputs);
   const [researching, setResearching] = useState(false);
   const [aiMsg, setAiMsg] = useState<string | null>(null);
-  const { status, savedAt, dirty, saveNow } = useAutosave(inp, (v) => actionSaveIpad(propertyId, { inputs: v }));
+  const { status, savedAt, dirty, saveNow } = useAutosave(inp, (v) => (locked ? Promise.resolve() : actionSaveIpad(propertyId, { inputs: v })));
   const pending = status === "saving";
 
   async function researchFill() {
@@ -107,7 +110,7 @@ export function IpadForm({ propertyId, initial }: { propertyId: string; initial:
               {researching ? "Researching…" : "✨ AI auto-fill"}
             </button>
             <Link href={`/property/${propertyId}/ipad/table`} className="btn-ghost">Table view</Link>
-            <a href={`/api/ipad/xlsx?id=${propertyId}`} className="btn-ghost" title="Export into the IPAD Excel template (formulas kept)">Export to Excel</a>
+            <ExportExcelButton propertyId={propertyId} />
             <Link href={`/property/${propertyId}/ipad/print`} className="btn-ghost">PDF / Print</Link>
             <button onClick={saveNow} disabled={pending} className="btn-primary disabled:opacity-60">
               {pending ? "Saving…" : "Save now"}
@@ -116,6 +119,9 @@ export function IpadForm({ propertyId, initial }: { propertyId: string; initial:
         </div>
       </div>
 
+      {locked && <IpadExcelBanner propertyId={propertyId} url={excelUrl!} at={excelAt} />}
+
+      <fieldset disabled={locked} className={`min-w-0 border-0 p-0 ${locked ? "opacity-75" : ""}`}>
       <div className="grid gap-6 lg:grid-cols-[1fr,340px]">
         {/* INPUT COLUMN */}
         <div className="space-y-5">
@@ -236,6 +242,7 @@ export function IpadForm({ propertyId, initial }: { propertyId: string; initial:
           </div>
         </div>
       </div>
+      </fieldset>
     </div>
   );
 }

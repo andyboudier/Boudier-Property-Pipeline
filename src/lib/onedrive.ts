@@ -216,3 +216,37 @@ export async function unarchiveSiteFolder(siteName: string): Promise<string | nu
   if (!res.ok) throw new Error(`Graph un-archive move failed: ${res.status} ${await res.text()}`);
   return ((await res.json()) as DriveChild).webUrl;
 }
+
+/**
+ * Save a generated file into the site's OneDrive folder (creating the folder if
+ * it doesn't exist yet) and return the stored item's webUrl so it can be opened
+ * straight from OneDrive. Re-exporting replaces the previous file, so the link
+ * stays stable. Returns null when Graph isn't configured.
+ */
+export async function uploadToSiteFolder(
+  siteName: string,
+  fileName: string,
+  data: Buffer,
+): Promise<{ webUrl: string; name: string } | null> {
+  if (!isOneDriveConfigured()) return null;
+  const token = await getToken();
+  const rootUrl = process.env.ONEDRIVE_ROOT_SHARE_URL || ONEDRIVE_ROOT;
+  const { driveId, itemId: rootId } = await resolveShare(token, rootUrl);
+  const folder = await createOrGetFolder(token, driveId, rootId, sanitizeName(siteName));
+
+  const safeFile = sanitizeName(fileName).replace(/[#%]/g, "-");
+  const res = await fetch(
+    `${GRAPH}/drives/${driveId}/items/${folder.id}:/${encodeURIComponent(safeFile)}:/content?@microsoft.graph.conflictBehavior=replace`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      },
+      body: new Uint8Array(data),
+    },
+  );
+  if (!res.ok) throw new Error(`Graph upload failed: ${res.status} ${await res.text()}`);
+  const item = await res.json();
+  return { webUrl: item.webUrl as string, name: item.name as string };
+}
