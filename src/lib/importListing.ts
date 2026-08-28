@@ -354,12 +354,110 @@ function mergeDrafts(...drafts: (ImportedDraft | null)[]): ImportedDraft {
 }
 
 // ── PDF particulars ──────────────────────────────────────────────────────────
+/**
+ * Some agents (Agency Pilot in particular) ship particulars with randomised
+ * subset fonts whose ToUnicode CMaps deliberately remap a handful of letters
+ * into the Unicode private-use area, so copied text comes out mangled
+ * ("Petersfield" -> "Peter<U+E004>field"). The substitution is per-document,
+ * so it can't be hardcoded — but it is recoverable: the font's CID space is a
+ * linear shift of Unicode, so we read the shift off the entries the obfuscator
+ * left alone, then apply it to the private-use ones to get the real letter.
+ */
+async function puaMapFromPdf(buf: ArrayBuffer): Promise<Map<number, string>> {
+  const isPUA = (c: number) => c >= 0xe000 && c <= 0xf8ff;
+  const merged = new Map<number, string>();
+  try {
+    const { inflateSync } = await import("zlib");
+    const raw = Buffer.from(buf).toString("latin1");
+
+    // Only fetch the objects actually referenced as /ToUnicode — inflating
+    // every stream in a multi-megabyte brochure would be wasteful.
+    const objNums = new Set<string>();
+    for (const m of raw.matchAll(/\/ToUnicode\s+(\d+)\s+\d+\s+R/g)) objNums.add(m[1]);
+
+    for (const num of objNums) {
+      const om = new RegExp(`(?<![0-9])${num}\\s+0\\s+obj([\\s\\S]*?)endobj`).exec(raw);
+      if (!om) continue;
+      const body = om[1];
+      const s = body.indexOf("stream");
+      if (s === -1) continue;
+      const data = body.slice(s + 6).replace(/^\r?\n/, "");
+      const payload = data.slice(0, data.lastIndexOf("endstream"));
+      let cmap: string;
+      try {
+        cmap = inflateSync(Buffer.from(payload, "latin1")).toString("latin1");
+      } catch {
+        cmap = payload; // uncompressed CMap
+      }
+      if (!cmap.includes("begincmap")) continue;
+
+      const pairs: Array<[number, number]> = [];
+      const hex = (h: string) => parseInt(h, 16);
+      for (const blk of cmap.match(/beginbfchar([\s\S]*?)endbfchar/g) || [])
+        for (const m of blk.matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]{4})>/g))
+          pairs.push([hex(m[1]), hex(m[2])]);
+      for (const blk of cmap.match(/beginbfrange([\s\S]*?)endbfrange/g) || [])
+        for (const m of blk.matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]{4})>/g)) {
+          const lo = hex(m[1]);
+          const hi = hex(m[2]);
+          const dst = hex(m[3]);
+          for (let i = 0; i <= hi - lo && i < 256; i++) pairs.push([lo + i, dst + i]);
+        }
+      if (!pairs.length) continue;
+
+      // Work out the CID->Unicode shift from the untouched, printable entries.
+      const tally = new Map<number, number>();
+      for (const [cid, uni] of pairs)
+        if (!isPUA(uni) && uni >= 0x20 && uni < 0x7f)
+          tally.set(uni - cid, (tally.get(uni - cid) || 0) + 1);
+      if (!tally.size) continue;
+      const total = [...tally.values()].reduce((a, b) => a + b, 0);
+      const [offset, hits] = [...tally.entries()].sort((a, b) => b[1] - a[1])[0];
+      // Only trust a font whose mapping really is a consistent single shift.
+      if (total < 3 || hits / total < 0.8) continue;
+
+      for (const [cid, uni] of pairs) {
+        if (!isPUA(uni)) continue;
+        const real = cid + offset;
+        if (real < 0x20 || real >= 0x7f) continue;
+        const ch = String.fromCharCode(real);
+        const seen = merged.get(uni);
+        if (seen === undefined) merged.set(uni, ch);
+        else if (seen !== ch) merged.delete(uni); // fonts disagree — don't guess
+      }
+    }
+  } catch {
+    /* best effort: fall through with whatever we resolved */
+  }
+  return merged;
+}
+
+/**
+ * Apply a recovered map. Anything we couldn't resolve is left alone on purpose:
+ * dropping it would silently turn "Petersfield" into "Peterfield", which is far
+ * harder to spot than a stray glyph.
+ */
+function applyPuaMap(text: string, map: Map<number, string>): string {
+  if (!map.size || !/[\uE000-\uF8FF]/.test(text)) return text;
+  return [...text]
+    .map((ch) => {
+      const cp = ch.codePointAt(0) as number;
+      if (cp < 0xe000 || cp > 0xf8ff) return ch;
+      return map.get(cp) ?? ch;
+    })
+    .join("");
+}
+
 async function extractPdfText(buf: ArrayBuffer): Promise<string> {
   try {
     const { extractText, getDocumentProxy } = await import("unpdf");
-    const pdf = await getDocumentProxy(new Uint8Array(buf));
+    // pdf.js detaches the buffer it is given, so hand it a throwaway copy —
+    // we still need the original bytes to read the font CMaps below.
+    const pdf = await getDocumentProxy(new Uint8Array(buf).slice());
     const { text } = await extractText(pdf, { mergePages: true });
-    return Array.isArray(text) ? text.join(" ") : text || "";
+    const joined = Array.isArray(text) ? text.join(" ") : text || "";
+    if (!/[\uE000-\uF8FF]/.test(joined)) return joined;
+    return applyPuaMap(joined, await puaMapFromPdf(buf));
   } catch {
     return "";
   }
