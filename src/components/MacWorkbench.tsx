@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { Mac, MacComp, MacSegment, MacSearchParams, MacSearchFilters } from "@/lib/types";
-import { MAC_OPTIONS, MAC_RADIUS_OPTIONS, MAC_PROPERTY_TYPES, DEFAULT_SEARCH, emptyComp, emptySegment, segmentStats, pricePerM2, daysOnMarket, isFilledComp } from "@/lib/macCalc";
+import { MAC_OPTIONS, MAC_RADIUS_OPTIONS, MAC_PROPERTY_TYPES, DEFAULT_SEARCH, emptyComp, emptySegment, segmentStats, pricePerM2, daysOnMarket, isFilledComp, TYPE_ROWS, segTypeRow } from "@/lib/macCalc";
 import { actionSaveMac, actionResearchMac } from "@/app/actions";
 import { gbp, num } from "@/lib/format";
 import { useAutosave } from "@/lib/useAutosave";
@@ -136,8 +136,13 @@ export function MacWorkbench({ propertyId, initial }: { propertyId: string; init
     }));
   }
   function addSegment() {
-    const idx = mac.segments.length + 1;
-    setMac((m) => ({ ...m, segments: [...m.segments, emptySegment(`seg-${Date.now()}`, `Segment ${idx}`, null, null)] }));
+    setMac((m) => {
+      const used = new Set(m.segments.map((s) => segTypeRow(s)).filter(Boolean) as string[]);
+      // Offer the next summary type that isn't represented yet (3-bed Flat
+      // onwards, since 1- and 2-bed are the standard first two segments).
+      const label = TYPE_ROWS.slice(3).find((r) => !used.has(r)) ?? TYPE_ROWS.find((r) => !used.has(r)) ?? "Bungalow";
+      return { ...m, segments: [...m.segments, emptySegment(`seg-${Date.now()}`, label, null, null)] };
+    });
     touch();
   }
   function removeSegment(key: string) {
@@ -385,11 +390,18 @@ function SegmentBlock({
   return (
     <section className="card overflow-hidden">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-paper-line bg-paper-warm/40 px-5 py-3">
-        <input
-          className="bg-transparent font-serif text-lg text-ink outline-none focus:underline"
-          value={seg.label}
-          onChange={(e) => onMeta({ label: e.target.value })}
-        />
+        <label className="flex items-center gap-2">
+          <select
+            className="rounded-md border border-paper-line bg-white px-2 py-1 font-serif text-lg text-ink outline-none focus:border-bronze"
+            value={segTypeRow(seg) ?? ""}
+            onChange={(e) => onMeta({ label: e.target.value })}
+            title="Which summary row this segment counts towards"
+          >
+            {!segTypeRow(seg) && <option value="">{seg.label || "Choose a type…"}</option>}
+            {TYPE_ROWS.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+          <span className="text-[11px] text-ink-muted">counts in the summary as this type</span>
+        </label>
         <div className="flex flex-wrap items-center gap-3">
           {/* Market totals from the portal search — these drive the sales ratio. */}
           <label className="flex items-center gap-1.5 text-xs text-ink-muted">

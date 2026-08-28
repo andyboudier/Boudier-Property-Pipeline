@@ -184,7 +184,18 @@ export interface MacSummaryData {
 
 const FLAT_TYPES = ["Flat (purpose-built)", "Flat (conversion)", "Maisonette", "Duplex"];
 const BUNGALOW_TYPES = ["Detached Bungalow", "Attached Bungalow"];
-const TYPE_ROWS = ["Studio", "1-bed Flat", "2-bed Flat", "3-bed Flat", "Bungalow", "Terraced", "Semi", "Detached"];
+export const TYPE_ROWS = ["Studio", "1-bed Flat", "2-bed Flat", "3-bed Flat", "Bungalow", "Terraced", "Semi", "Detached"];
+// The four flat rows are bed-driven; the rest are whole-segment types.
+const FLAT_ROWS = TYPE_ROWS.slice(0, 4);
+
+/** The summary row a segment declares via its title (e.g. "Bungalow"), matched
+ * loosely so "1 Bed Flats" also resolves to "1-bed Flat". */
+export function segTypeRow(seg?: MacSegment): string | null {
+  if (!seg?.label) return null;
+  const norm = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const l = norm(seg.label);
+  return TYPE_ROWS.find((r) => l === norm(r) || l.startsWith(norm(r))) ?? null;
+}
 const BED_ROWS = ["1-bed", "2-bed", "3-bed", "4-bed", "5-bed", "6+-bed"];
 
 function typeBucket(c: MacComp): string | null {
@@ -215,7 +226,11 @@ function segIsFlats(seg?: MacSegment): boolean {
 }
 function typeBucketSeg(c: MacComp, seg?: MacSegment): string | null {
   const beds = effBeds(c, seg);
-  const isFlat = FLAT_TYPES.includes(c.propertyType) || (!c.propertyType && segIsFlats(seg));
+  const declared = segTypeRow(seg);
+  // A segment declared as Bungalow / Terraced / Semi / Detached counts as that
+  // row — there is no per-comp type field to infer it from.
+  if (declared && !FLAT_ROWS.includes(declared)) return declared;
+  const isFlat = FLAT_TYPES.includes(c.propertyType) || (declared != null && FLAT_ROWS.includes(declared)) || (!c.propertyType && segIsFlats(seg));
   if (isFlat) {
     if (beds === 0) return "Studio";
     if (beds === 1) return "1-bed Flat";
