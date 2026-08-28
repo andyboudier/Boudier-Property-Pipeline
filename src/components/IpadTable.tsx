@@ -115,7 +115,7 @@ export function IpadTable({
         </div>
         <div className="flex items-center gap-2">
           <Link href={`/property/${propertyId}/ipad`} className="btn-ghost">Form view</Link>
-          <ExportExcelButton propertyId={propertyId} />
+          <ExportExcelButton propertyId={propertyId} exported={locked} />
           <PrintButton label="Download table as PDF" />
           <button onClick={saveNow} disabled={status === "saving"} className="btn-primary disabled:opacity-60">
             {status === "saving" ? "Saving…" : "Save now"}
