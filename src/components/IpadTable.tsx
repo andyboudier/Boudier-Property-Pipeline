@@ -47,6 +47,15 @@ export function IpadTable({
   function set<K extends keyof IpadInputs>(key: K, value: IpadInputs[K]) {
     setInp((s) => ({ ...s, [key]: value }));
   }
+  // Set a fixed £ override for a percentage fee (null clears it → back to %).
+  function setOverride(key: string, value: number | null) {
+    setInp((s) => {
+      const overrides = { ...(s.overrides ?? {}) };
+      if (value == null) delete overrides[key];
+      else overrides[key] = value;
+      return { ...s, overrides };
+    });
+  }
   function setUnit(id: string, patch: Partial<IpadUnit>) {
     setInp((s) => ({ ...s, units: s.units.map((u) => (u.id === id ? { ...u, ...patch } : u)) }));
   }
@@ -69,19 +78,61 @@ export function IpadTable({
   const money = (k: keyof IpadInputs) => (
     <NumberInput className={NUM} value={(inp[k] as number) || 0} onChange={(n) => set(k, n as IpadInputs[typeof k])} />
   );
-  const percent = (k: keyof IpadInputs) =>
-    fixed(k as string) ? (
-      <span className="text-ink-muted">fixed £</span>
-    ) : (
-      <span className="flex items-center justify-end">
+  // Compact version of the form view's %/£ switch: percentage of the base, or a
+  // fixed £ amount. Switching to £ seeds the box with the £ the % was producing.
+  const tinyBtn = (active: boolean) =>
+    `px-1 text-[10px] font-bold leading-4 transition ${active ? "bg-ink text-white" : "bg-white text-bronze-dark hover:bg-bronze/15"}`;
+  const pctSwitch = (k: keyof IpadInputs) => (
+    <span className="inline-flex shrink-0 overflow-hidden rounded border border-ink/30">
+      <button
+        type="button"
+        className={tinyBtn(!fixed(k as string))}
+        onClick={() => setOverride(k as string, null)}
+        title="Calculate as a percentage"
+      >
+        %
+      </button>
+      <button
+        type="button"
+        className={tinyBtn(fixed(k as string))}
+        onClick={() => setOverride(k as string, fa[k as string] ?? 0)}
+        title="Enter a fixed £ amount instead"
+      >
+        £
+      </button>
+    </span>
+  );
+  const percent = (k: keyof IpadInputs) => (
+    <span className="flex items-center justify-end gap-1">
+      {pctSwitch(k)}
+      {fixed(k as string) ? (
         <NumberInput
-          className={`${NUM} w-9`}
-          value={+(((inp[k] as number) || 0) * 100).toFixed(3)}
-          onChange={(n) => set(k, (n / 100) as IpadInputs[typeof k])}
+          className={`${NUM} w-16`}
+          value={(ov[k as string] as number) || 0}
+          onChange={(n) => setOverride(k as string, n)}
         />
-        <span className="pr-0.5">%</span>
-      </span>
-    );
+      ) : (
+        <>
+          <NumberInput
+            className={`${NUM} w-9`}
+            value={+(((inp[k] as number) || 0) * 100).toFixed(3)}
+            onChange={(n) => set(k, (n / 100) as IpadInputs[typeof k])}
+          />
+          <span className="pr-0.5">%</span>
+        </>
+      )}
+    </span>
+  );
+  const bridgeLabel = (base: string, monthsK: keyof IpadInputs, rateK: keyof IpadInputs) =>
+    fixed(rateK as string)
+      ? `${base} (fixed £)`
+      : `${base} for ${num((inp[monthsK] as number) || 0)} months @ ${+(((inp[rateK] as number) || 0) * 100).toFixed(2)}% per month`;
+  const ofHint = (k: keyof IpadInputs, text: string) => (fixed(k as string) ? "" : text);
+  // A label that quotes its own percentage is wrong once a fixed £ is in force.
+  const pctLabel = (base: string, k: keyof IpadInputs, suffix = "") =>
+    fixed(k as string)
+      ? `${base} (fixed £)`
+      : `${base} ${+(((inp[k] as number) || 0) * 100).toFixed(1)}%${suffix}`;
   const rate = (k: keyof IpadInputs) => (
     <span className="flex items-center justify-end">
       <span>£</span>
@@ -218,17 +269,17 @@ export function IpadTable({
 
             {/* ── Construction / refurbishment (rows 21–46) ── */}
             <Section>Construction/Refurbishment Costs</Section>
-            <Row label="Development Management Fee" cost={gbp(fa.devMgmtPct ?? 0)} h={percent("devMgmtPct")} i="of Total Construction Cost" />
-            <Row label="Planning Fees" cost={gbp(fa.planningPct ?? 0)} h={percent("planningPct")} i="of Total Construction Cost" />
-            <Row label="Architect's First Stage" cost={gbp(fa.architect1Pct ?? 0)} h={percent("architect1Pct")} i="of Total Construction Cost" />
-            <Row label="Architect & Planning Fees - Second Stage" cost={gbp(fa.architect2Pct ?? 0)} h={percent("architect2Pct")} i="of Total Construction Cost" />
-            <Row label="Structural Engineer" cost={gbp(fa.structuralPct ?? 0)} h={percent("structuralPct")} i="of Total Construction Cost" />
+            <Row label="Development Management Fee" cost={gbp(fa.devMgmtPct ?? 0)} h={percent("devMgmtPct")} i={ofHint("devMgmtPct", "of Total Construction Cost")} />
+            <Row label="Planning Fees" cost={gbp(fa.planningPct ?? 0)} h={percent("planningPct")} i={ofHint("planningPct", "of Total Construction Cost")} />
+            <Row label="Architect's First Stage" cost={gbp(fa.architect1Pct ?? 0)} h={percent("architect1Pct")} i={ofHint("architect1Pct", "of Total Construction Cost")} />
+            <Row label="Architect & Planning Fees - Second Stage" cost={gbp(fa.architect2Pct ?? 0)} h={percent("architect2Pct")} i={ofHint("architect2Pct", "of Total Construction Cost")} />
+            <Row label="Structural Engineer" cost={gbp(fa.structuralPct ?? 0)} h={percent("structuralPct")} i={ofHint("structuralPct", "of Total Construction Cost")} />
             <Row label="Party Wall Surveyor" cost={money("partyWall")} h="TBC" />
             <Row label="SAPS (included builder's costs)" cost={money("saps")} h="TBC" />
-            <Row label="Contract Administration by Project Manager" cost={gbp(fa.contractAdminPct ?? 0)} h={percent("contractAdminPct")} i="of Total Construction Cost" />
+            <Row label="Contract Administration by Project Manager" cost={gbp(fa.contractAdminPct ?? 0)} h={percent("contractAdminPct")} i={ofHint("contractAdminPct", "of Total Construction Cost")} />
             <Row label="Empty Building Rates/Council Tax" cost={money("emptyRates")} h="TBC" />
             <Row label="Building Warranty" cost={money("buildingWarranty")} h="Circa £1,500/Unit Residential" hSpan={4} />
-            <Row label="CDM Co-ordinator" cost={gbp(fa.cdmPct ?? 0)} h={percent("cdmPct")} i="of Total Construction Cost" />
+            <Row label="CDM Co-ordinator" cost={gbp(fa.cdmPct ?? 0)} h={percent("cdmPct")} i={ofHint("cdmPct", "of Total Construction Cost")} />
             <Row label="CIL/106" cost={money("cil106")} h="TBC" />
             <Row label="Building Control" cost={money("buildingControl")} h="TBC" />
             <Row label="Demolition Costs" cost={money("demolition")} h="TBC" />
@@ -238,7 +289,7 @@ export function IpadTable({
             <Row label="New Build Cost" cost={gbp(area * inp.newBuildRatePerM2)} h={rate("newBuildRatePerM2")} i="per m2" j=") specifically" />
             <Row label="Landscaping/External Works" cost={money("landscaping")} h="TBC" />
             <Row label="Other Costs" cost={money("otherCosts")} h="TBC" />
-            <Row label={`Contingency  @${+(inp.contingencyPct * 100).toFixed(1)}%`} cost={gbp(fa.contingencyPct ?? 0)} h={percent("contingencyPct")} />
+            <Row label={pctLabel("Contingency  @", "contingencyPct")} cost={gbp(fa.contingencyPct ?? 0)} h={percent("contingencyPct")} />
             <Row label="Utilities" cost={money("utilities")} h="Circa £1,000/service/unit" hSpan={4} />
             <Row label="Accountancy, Book-keeping etc. for SPV" cost={money("accountancy")} h="TBC" />
             <Row label="VAT on costs" cost={money("vatOnCosts")} h="TBC (New build 0%, Refurb 5%, Accountant to advise)" hSpan={4} />
@@ -261,17 +312,17 @@ export function IpadTable({
             <Spacer />
             <Row label="Commercial Finance" labelBold cost={gbp(commercialFinance)} h="Commercial Finance" hSpan={4} />
             <Row
-              label={`Purchase Bridging Cost for ${num(inp.commBridgeMonths)} months @ ${+(inp.commBridgeRatePerMonth * 100).toFixed(2)}% per month`}
+              label={bridgeLabel("Purchase Bridging Cost", "commBridgeMonths", "commBridgeRatePerMonth")}
               cost={gbp(fa.commBridgeRatePerMonth ?? 0)}
-              h={months("commBridgeMonths")}
-              i="Months @"
+              h={fixed("commBridgeRatePerMonth") ? "" : months("commBridgeMonths")}
+              i={fixed("commBridgeRatePerMonth") ? "" : "Months @"}
               j={percent("commBridgeRatePerMonth")}
-              k="interest"
+              k={fixed("commBridgeRatePerMonth") ? "" : "interest"}
             />
-            <Row label={`Broker Fee  @${+(inp.commBrokerPct * 100).toFixed(1)}%`} cost={gbp(fa.commBrokerPct ?? 0)} h={percent("commBrokerPct")} />
-            <Row label={`Lender Admin Fee ${+(inp.commAdminPct * 100).toFixed(1)}%`} cost={gbp(fa.commAdminPct ?? 0)} h={percent("commAdminPct")} />
+            <Row label={pctLabel("Broker Fee  @", "commBrokerPct")} cost={gbp(fa.commBrokerPct ?? 0)} h={percent("commBrokerPct")} />
+            <Row label={pctLabel("Lender Admin Fee", "commAdminPct")} cost={gbp(fa.commAdminPct ?? 0)} h={percent("commAdminPct")} />
             <Row label="Lender Valuation Fee" cost={money("commValuation")} h="TBC" />
-            <Row label={`Lender Exit Fee ${+(inp.commExitPct * 100).toFixed(1)}%`} cost={gbp(fa.commExitPct ?? 0)} h={percent("commExitPct")} />
+            <Row label={pctLabel("Lender Exit Fee", "commExitPct")} cost={gbp(fa.commExitPct ?? 0)} h={percent("commExitPct")} />
             <Row label="Cost of Commercial Finance" labelBold bold cost={gbp(costOfCommercialFinance)} />
             <Spacer />
             <Total label="Total Purchase Financing Costs" value={out.totalPurchaseFinance} />
@@ -282,17 +333,17 @@ export function IpadTable({
             <Section>Finance Costs - Development</Section>
             <Row label="Development Loan" labelBold cost={gbp(out.totalConstruction)} h="Commercial Finance" hSpan={4} />
             <Row
-              label={`Development Bridging Cost for ${num(inp.devBridgeMonths)} months @ ${+(inp.devBridgeRatePerMonth * 100).toFixed(2)}% per month`}
+              label={bridgeLabel("Development Bridging Cost", "devBridgeMonths", "devBridgeRatePerMonth")}
               cost={gbp(fa.devBridgeRatePerMonth ?? 0)}
-              h={months("devBridgeMonths")}
-              i="Months @"
+              h={fixed("devBridgeRatePerMonth") ? "" : months("devBridgeMonths")}
+              i={fixed("devBridgeRatePerMonth") ? "" : "Months @"}
               j={percent("devBridgeRatePerMonth")}
-              k="interest"
+              k={fixed("devBridgeRatePerMonth") ? "" : "interest"}
             />
-            <Row label={`Broker Fee (${+(inp.devBrokerPct * 100).toFixed(1)}%)`} cost={gbp(fa.devBrokerPct ?? 0)} h={percent("devBrokerPct")} />
-            <Row label={`Lender Admin Fee ${+(inp.devAdminPct * 100).toFixed(1)}%`} cost={gbp(fa.devAdminPct ?? 0)} h={percent("devAdminPct")} />
+            <Row label={pctLabel("Broker Fee", "devBrokerPct")} cost={gbp(fa.devBrokerPct ?? 0)} h={percent("devBrokerPct")} />
+            <Row label={pctLabel("Lender Admin Fee", "devAdminPct")} cost={gbp(fa.devAdminPct ?? 0)} h={percent("devAdminPct")} />
             <Row label="Lender Valuation Fee" cost={money("devValuation")} h="TBC" />
-            <Row label={`Lender Exit Fee ${+(inp.devExitPct * 100).toFixed(1)}%`} cost={gbp(fa.devExitPct ?? 0)} h={percent("devExitPct")} />
+            <Row label={pctLabel("Lender Exit Fee", "devExitPct")} cost={gbp(fa.devExitPct ?? 0)} h={percent("devExitPct")} />
             <Total label="Total Development Financing Costs" value={out.totalDevFinance} />
 
             <Spacer />
@@ -300,7 +351,7 @@ export function IpadTable({
             <Spacer />
 
             {/* ── Disposal (rows 74–79) ── */}
-            <Row label="Agent's Selling Fees including legals" cost={gbp(fa.agentSellingPct ?? 0)} h={percent("agentSellingPct")} i="of GDV" />
+            <Row label="Agent's Selling Fees including legals" cost={gbp(fa.agentSellingPct ?? 0)} h={percent("agentSellingPct")} i={ofHint("agentSellingPct", "of GDV")} />
             <Total label="TOTAL DISPOSAL COSTS" value={out.totalDisposal} />
             <Spacer />
             <Row label="Cost per sqm (excluding finance)" cost={gbp(out.costPerSqmExFinance, 2)} />
