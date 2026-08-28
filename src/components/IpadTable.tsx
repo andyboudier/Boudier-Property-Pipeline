@@ -10,7 +10,7 @@ import { NumberInput } from "./NumberInput";
 import { ExportExcelButton } from "./ExportExcelButton";
 import { IpadExcelBanner } from "./IpadExcelBanner";
 import { PrintButton } from "./PrintButton";
-import { gbp, num, pct } from "@/lib/format";
+import { gbp, num, pct, pctNum } from "@/lib/format";
 
 /**
  * Editable table view — the IPAD laid out exactly like the "IPAD Foundation"
@@ -118,7 +118,7 @@ export function IpadTable({
         <span className="flex items-center gap-0.5">
           <NumberInput
             className={`${PCT_NUM} w-14 text-left`}
-            value={+(((inp[k] as number) || 0) * 100).toFixed(3)}
+            value={pctNum(inp[k] as number)}
             onChange={(n) => set(k, (n / 100) as IpadInputs[typeof k])}
           />
           <span className="text-ink-muted">%</span>
@@ -129,12 +129,12 @@ export function IpadTable({
   const bridgeLabel = (base: string, monthsK: keyof IpadInputs, rateK: keyof IpadInputs) =>
     fixed(rateK as string)
       ? `${base} (fixed £)`
-      : `${base} for ${num((inp[monthsK] as number) || 0)} months @ ${+(((inp[rateK] as number) || 0) * 100).toFixed(2)}% per month`;
+      : `${base} for ${num((inp[monthsK] as number) || 0)} months @ ${pctNum(inp[rateK] as number)}% per month`;
   // A label that quotes its own percentage is wrong once a fixed £ is in force.
   const pctLabel = (base: string, k: keyof IpadInputs, suffix = "") =>
     fixed(k as string)
       ? `${base} (fixed £)`
-      : `${base} ${+(((inp[k] as number) || 0) * 100).toFixed(1)}%${suffix}`;
+      : `${base} ${pctNum(inp[k] as number)}%${suffix}`;
   const rate = (k: keyof IpadInputs) => (
     <span className="flex items-center justify-end">
       <span>£</span>
@@ -303,7 +303,7 @@ export function IpadTable({
             <Section>Finance Costs - Purchase</Section>
             <Row label="Private Finance" labelBold cost={money("privateFinance")} />
             <Row
-              label={`Purchase Private Finance Cost for ${num(inp.privateFinanceMonths)} months @ ${+(inp.privateFinanceRatePerMonth * 100).toFixed(2)}% per month`}
+              label={`Purchase Private Finance Cost for ${num(inp.privateFinanceMonths)} months @ ${pctNum(inp.privateFinanceRatePerMonth)}% per month`}
               cost={gbp(fa.privateFinanceRatePerMonth ?? 0)}
               h={months("privateFinanceMonths")}
               i="Months @"

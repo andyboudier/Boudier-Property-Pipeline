@@ -2,7 +2,7 @@
 
 import type { IpadInputs } from "@/lib/types";
 import type { IpadOutputs } from "@/lib/ipadCalc";
-import { gbp } from "@/lib/format";
+import { gbp, pctNum } from "@/lib/format";
 import { NumberInput } from "./NumberInput";
 
 type SetFn = <K extends keyof IpadInputs>(key: K, value: IpadInputs[K]) => void;
@@ -61,7 +61,7 @@ export function IpadProjectCosts({ inp, out, set, setOverride }: { inp: IpadInpu
             <Rate label="New Build Cost" k="newBuildRatePerM2" inp={inp} area={area} set={set} />
             <Money label="Landscaping/External Works" k="landscaping" inp={inp} set={set} comment="TBC" />
             <Money label="Other Costs" k="otherCosts" inp={inp} set={set} comment="TBC" />
-            <Pct label={`Contingency @ ${(inp.contingencyPct * 100).toFixed(0)}%`} k="contingencyPct" inp={inp} out={out} set={set} setOverride={setOverride} of="of build + landscaping + other" />
+            <Pct label={`Contingency @ ${pctNum(inp.contingencyPct)}%`} k="contingencyPct" inp={inp} out={out} set={set} setOverride={setOverride} of="of build + landscaping + other" />
             <Money label="Utilities" k="utilities" inp={inp} set={set} comment="Circa £1,000/service/unit" />
             <Money label="Accountancy, Book-keeping etc. for SPV" k="accountancy" inp={inp} set={set} comment="TBC" />
             <Money label="VAT on costs" k="vatOnCosts" inp={inp} set={set} comment="TBC (New build 0%, Refurb 5%, Accountant to advise)" />
@@ -172,7 +172,7 @@ function Pct({ label, k, inp, out, set, setOverride, of }: { label: string; k: k
             <>
               <NumberInput
                 className="field-sm w-16 tabular-nums"
-                value={pctVal ? +(pctVal * 100).toFixed(3) : 0}
+                value={pctNum(pctVal)}
                 onChange={(n) => set(k, (n / 100) as IpadInputs[typeof k])}
               />
               <span className="text-xs text-ink-muted">% {of}</span>
@@ -192,7 +192,7 @@ function Bridge({ label, monthsK, rateK, inp, value, set, setOverride }: { label
   const tBtn = (active: boolean) => `px-2 py-1 text-[11px] font-bold transition ${active ? "bg-ink text-white" : "bg-white text-bronze-dark hover:bg-bronze/15"}`;
   return (
     <tr className="border-t border-paper-line/70">
-      <Td>{isFixed ? `${label} (fixed £)` : `${label} for ${months} months @ ${+(rate * 100).toFixed(3)}% per month`}</Td>
+      <Td>{isFixed ? `${label} (fixed £)` : `${label} for ${months} months @ ${pctNum(rate)}% per month`}</Td>
       <CostCell value={value} />
       <td className="px-4 py-1.5">
         <span className="inline-flex flex-wrap items-center gap-1.5">
@@ -206,7 +206,7 @@ function Bridge({ label, monthsK, rateK, inp, value, set, setOverride }: { label
             <>
               <NumberInput className="field-sm w-16 tabular-nums" value={months} onChange={(n) => set(monthsK, n as IpadInputs[typeof monthsK])} />
               <span className="text-xs text-ink-muted">months @</span>
-              <NumberInput className="field-sm w-16 tabular-nums" value={rate ? +(rate * 100).toFixed(3) : 0} onChange={(n) => set(rateK, (n / 100) as IpadInputs[typeof rateK])} />
+              <NumberInput className="field-sm w-16 tabular-nums" value={pctNum(rate)} onChange={(n) => set(rateK, (n / 100) as IpadInputs[typeof rateK])} />
               <span className="text-xs text-ink-muted">% interest</span>
             </>
           )}
