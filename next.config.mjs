@@ -10,6 +10,8 @@ const nextConfig = {
     // loaded at runtime, not imported) — ship them with the PDF function.
     outputFileTracingIncludes: {
       "/api/pdf": ["./node_modules/@sparticuz/chromium/bin/**"],
+      // The IPAD Excel template is read at runtime, so trace it into the bundle.
+      "/api/ipad/xlsx": ["./src/templates/**"],
     },
   },
 };

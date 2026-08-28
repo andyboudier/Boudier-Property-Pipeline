@@ -108,6 +108,7 @@ export function IpadTable({
         </div>
         <div className="flex items-center gap-2">
           <Link href={`/property/${propertyId}/ipad`} className="btn-ghost">Form view</Link>
+          <a href={`/api/ipad/xlsx?id=${propertyId}`} className="btn-ghost" title="Export into the IPAD Excel template (formulas kept)">Export to Excel</a>
           <PrintButton label="Download table as PDF" />
           <button onClick={saveNow} disabled={status === "saving"} className="btn-primary disabled:opacity-60">
             {status === "saving" ? "Saving…" : "Save now"}

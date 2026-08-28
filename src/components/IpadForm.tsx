@@ -107,6 +107,7 @@ export function IpadForm({ propertyId, initial }: { propertyId: string; initial:
               {researching ? "Researching…" : "✨ AI auto-fill"}
             </button>
             <Link href={`/property/${propertyId}/ipad/table`} className="btn-ghost">Table view</Link>
+            <a href={`/api/ipad/xlsx?id=${propertyId}`} className="btn-ghost" title="Export into the IPAD Excel template (formulas kept)">Export to Excel</a>
             <Link href={`/property/${propertyId}/ipad/print`} className="btn-ghost">PDF / Print</Link>
             <button onClick={saveNow} disabled={pending} className="btn-primary disabled:opacity-60">
               {pending ? "Saving…" : "Save now"}
