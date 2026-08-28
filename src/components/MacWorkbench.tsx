@@ -9,8 +9,6 @@ import { gbp, num } from "@/lib/format";
 import { useAutosave } from "@/lib/useAutosave";
 import { MacSummaryView } from "./MacSummaryView";
 
-const RADIUS_OPTS = ["Exact Area Only", "Within 1/4 mile", "Within 1/2 mile", "Within 1 mile", "Within 3 miles"];
-const TYPE_FILTERS = ["Flats/Apartments", "Houses", "Bungalows", "Any"];
 const FILTER_ROWS: [keyof MacSearchFilters, string][] = [
   ["garden", "Garden"],
   ["parking", "Parking"],
@@ -23,6 +21,8 @@ const FILTER_ROWS: [keyof MacSearchFilters, string][] = [
 export function MacWorkbench({ propertyId, initial }: { propertyId: string; initial: Mac }) {
   const [mac, setMac] = useState<Mac>(initial);
   const [showSummary, setShowSummary] = useState(false);
+  const [paramsOpen, setParamsOpen] = useState(true);
+  const [activeSeg, setActiveSeg] = useState(0);
   const [researching, setResearching] = useState(false);
   const [aiMsg, setAiMsg] = useState<string | null>(null);
   const { status, savedAt, dirty, saveNow } = useAutosave(mac, (v) => actionSaveMac(propertyId, v));
@@ -121,6 +121,20 @@ export function MacWorkbench({ propertyId, initial }: { propertyId: string; init
     }));
     touch();
   }
+  function duplicateComp(segKey: string, compId: string) {
+    setMac((m) => ({
+      ...m,
+      segments: m.segments.map((s) => {
+        if (s.key !== segKey) return s;
+        const i = s.comps.findIndex((c) => c.id === compId);
+        if (i === -1) return s;
+        const copy = { ...s.comps[i], id: `${segKey}-${Date.now()}` };
+        const comps = [...s.comps];
+        comps.splice(i + 1, 0, copy); // insert directly below the row copied
+        return { ...s, comps };
+      }),
+    }));
+  }
   function addSegment() {
     const idx = mac.segments.length + 1;
     setMac((m) => ({ ...m, segments: [...m.segments, emptySegment(`seg-${Date.now()}`, `Segment ${idx}`, null, null)] }));
@@ -182,10 +196,22 @@ export function MacWorkbench({ propertyId, initial }: { propertyId: string; init
 
       {/* Market search parameters */}
       <section className="card overflow-hidden">
-        <h2 className="border-b border-paper-line bg-paper-warm/70 px-5 py-2.5 text-center font-serif text-lg text-ink">
-          Market Search Parameters
-        </h2>
-        <div className="grid gap-x-8 gap-y-4 p-5 lg:grid-cols-[1.7fr,1fr]">
+        <button
+          onClick={() => setParamsOpen((o) => !o)}
+          aria-expanded={paramsOpen}
+          className="flex w-full items-center justify-between gap-3 border-b border-paper-line bg-paper-warm/70 px-5 py-2.5 text-left transition hover:bg-paper-warm"
+        >
+          <span className="font-serif text-lg text-ink">Market Search Parameters</span>
+          <span className="flex items-center gap-3">
+            {!paramsOpen && (
+              <span className="hidden truncate text-xs text-ink-muted sm:inline">
+                {[search.searchArea, search.radius, search.propertyType].filter(Boolean).join(" · ")}
+              </span>
+            )}
+            <span className="text-xs text-ink-muted">{paramsOpen ? "Hide ▲" : "Show ▼"}</span>
+          </span>
+        </button>
+        <div className={`${paramsOpen ? "grid" : "hidden"} gap-x-8 gap-y-4 p-5 lg:grid-cols-[1.7fr,1fr]`}>
           {/* Left — search fields */}
           <div className="space-y-2.5">
             <ParamRow label="Search Area">
@@ -239,22 +265,59 @@ export function MacWorkbench({ propertyId, initial }: { propertyId: string; init
         </div>
       </section>
 
-      {/* Segments */}
-      {mac.segments.map((seg) => (
-        <SegmentBlock
-          key={seg.key}
-          seg={seg}
-          refDate={mac.date}
-          onMeta={(patch) => patchSegment(seg.key, patch)}
-          onComp={(compId, patch) => patchComp(seg.key, compId, patch)}
-          onAddComp={() => addComp(seg.key)}
-          onRemoveComp={(compId) => removeComp(seg.key, compId)}
-          onRemoveSegment={mac.segments.length > 1 ? () => removeSegment(seg.key) : undefined}
-        />
-      ))}
+      {/* Segment tabs — one table at a time (1 bed / 2 bed / …) */}
+      <div className="flex flex-wrap items-center gap-1 border-b border-paper-line">
+        {mac.segments.map((seg, i) => {
+          const active = i === Math.min(activeSeg, mac.segments.length - 1);
+          return (
+            <button
+              key={seg.key}
+              onClick={() => setActiveSeg(i)}
+              className="-mb-px rounded-t-lg border border-b-0 px-4 py-2 text-sm font-medium transition"
+              style={{
+                borderColor: active ? "#E7E4DE" : "transparent",
+                background: active ? "#fff" : "transparent",
+                color: active ? "#16202B" : "#5B6976",
+              }}
+            >
+              {seg.label || `Segment ${i + 1}`}
+              <span className="ml-2 text-xs text-ink-muted">{seg.comps.filter(isFilledComp).length}</span>
+            </button>
+          );
+        })}
+        <button onClick={addSegment} className="ml-2 px-3 py-2 text-sm text-bronze-dark hover:underline">
+          + Add segment
+        </button>
+      </div>
 
-      <div className="flex items-center justify-between">
-        <button onClick={addSegment} className="btn-ghost">+ Add segment</button>
+      {mac.segments[Math.min(activeSeg, mac.segments.length - 1)] && (
+        (() => {
+          const idx = Math.min(activeSeg, mac.segments.length - 1);
+          const seg = mac.segments[idx];
+          return (
+            <SegmentBlock
+              key={seg.key}
+              seg={seg}
+              refDate={mac.date}
+              onMeta={(patch) => patchSegment(seg.key, patch)}
+              onComp={(compId, patch) => patchComp(seg.key, compId, patch)}
+              onAddComp={() => addComp(seg.key)}
+              onRemoveComp={(compId) => removeComp(seg.key, compId)}
+              onDuplicateComp={(compId) => duplicateComp(seg.key, compId)}
+              onRemoveSegment={
+                mac.segments.length > 1
+                  ? () => {
+                      removeSegment(seg.key);
+                      setActiveSeg(0);
+                    }
+                  : undefined
+              }
+            />
+          );
+        })()
+      )}
+
+      <div className="flex items-center justify-end">
         <div className="flex gap-2">
           <Link href={`/property/${propertyId}`} className="btn-ghost">Back to overview</Link>
           <button onClick={saveNow} disabled={pending} className="btn-primary disabled:opacity-60">
@@ -268,6 +331,35 @@ export function MacWorkbench({ propertyId, initial }: { propertyId: string; init
   );
 }
 
+// Column definitions mirroring the MAC comparables sheet. `req` marks the
+// fields the sheet flags with a red asterisk; `calc` columns are computed.
+const COLS: { key: string; label: string; req?: boolean; calc?: boolean; tint?: "sage" | "tan"; w: number }[] = [
+  { key: "property", label: "Property", tint: "sage", w: 150 },
+  { key: "area", label: "Area", tint: "sage", w: 120 },
+  { key: "askingPrice", label: "Asking Price", req: true, w: 110 },
+  { key: "beds", label: "No. of Beds", req: true, w: 90 },
+  { key: "condition", label: "Condition", tint: "sage", w: 120 },
+  { key: "kerbAppeal", label: "Kerb Appeal", tint: "sage", w: 120 },
+  { key: "proximity", label: "Proximity to Project", tint: "sage", w: 150 },
+  { key: "similarity", label: "Similarity To Your Project", tint: "sage", w: 160 },
+  { key: "totalM2", label: "Total m2", req: true, w: 90 },
+  { key: "m2Source", label: "m2 Source", tint: "sage", w: 110 },
+  { key: "pricePerM2", label: "£ Per m2", calc: true, w: 100 },
+  { key: "agent", label: "Agent's Name", tint: "sage", w: 130 },
+  { key: "onMarketSince", label: "On Market Since", req: true, w: 130 },
+  { key: "daysOnMarket", label: "Days on Market", calc: true, w: 110 },
+  { key: "status", label: "Status", tint: "tan", w: 110 },
+  { key: "comments", label: "Comments", tint: "sage", w: 200 },
+  { key: "link", label: "Link", tint: "sage", w: 120 },
+];
+
+function headStyle(c: (typeof COLS)[number]): React.CSSProperties {
+  if (c.req) return { background: "#fff", color: "#C00000" };
+  if (c.calc) return { background: "#fff", color: "#16202B" };
+  if (c.tint === "tan") return { background: "#DED8C8", color: "#16202B" };
+  return { background: "#EAEEE3", color: "#16202B" };
+}
+
 function SegmentBlock({
   seg,
   refDate,
@@ -275,6 +367,7 @@ function SegmentBlock({
   onComp,
   onAddComp,
   onRemoveComp,
+  onDuplicateComp,
   onRemoveSegment,
 }: {
   seg: MacSegment;
@@ -283,9 +376,11 @@ function SegmentBlock({
   onComp: (compId: string, patch: Partial<MacComp>) => void;
   onAddComp: () => void;
   onRemoveComp: (compId: string) => void;
+  onDuplicateComp: (compId: string) => void;
   onRemoveSegment?: () => void;
 }) {
   const stats = useMemo(() => segmentStats(seg, refDate), [seg, refDate]);
+  const cell = "w-full min-w-0 bg-transparent px-1 py-1 text-[12px] outline-none focus:bg-bronze/10 rounded-sm";
 
   return (
     <section className="card overflow-hidden">
@@ -295,120 +390,143 @@ function SegmentBlock({
           value={seg.label}
           onChange={(e) => onMeta({ label: e.target.value })}
         />
-        {onRemoveSegment && (
-          <button onClick={onRemoveSegment} className="text-xs text-ink-muted hover:text-status-stop">
-            Remove segment
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Market totals from the portal search — these drive the sales ratio. */}
+          <label className="flex items-center gap-1.5 text-xs text-ink-muted">
+            Total inc SSTC
+            <input
+              type="number"
+              className="field-sm w-20"
+              value={seg.totalIncSstc ?? ""}
+              onChange={(e) => onMeta({ totalIncSstc: toNum(e.target.value) })}
+            />
+          </label>
+          <label className="flex items-center gap-1.5 text-xs text-ink-muted">
+            Unsold exc SSTC
+            <input
+              type="number"
+              className="field-sm w-20"
+              value={seg.totalExcSstc ?? ""}
+              onChange={(e) => onMeta({ totalExcSstc: toNum(e.target.value) })}
+            />
+          </label>
+          {onRemoveSegment && (
+            <button onClick={onRemoveSegment} className="text-xs text-ink-muted hover:text-status-stop">
+              Remove segment
+            </button>
+          )}
+        </div>
       </header>
 
-      {/* Search parameters */}
-      <div className="grid gap-3 border-b border-paper-line px-5 py-4 sm:grid-cols-3 lg:grid-cols-6">
-        <Labeled label="Search area">
-          <input className="field-sm" value={seg.searchArea} onChange={(e) => onMeta({ searchArea: e.target.value })} />
-        </Labeled>
-        <Labeled label="Radius">
-          <select className="field-sm" value={seg.radius} onChange={(e) => onMeta({ radius: e.target.value })}>
-            {RADIUS_OPTS.map((o) => <option key={o}>{o}</option>)}
-          </select>
-        </Labeled>
-        <Labeled label="Type filter">
-          <select className="field-sm" value={seg.propertyTypeFilter} onChange={(e) => onMeta({ propertyTypeFilter: e.target.value })}>
-            {TYPE_FILTERS.map((o) => <option key={o}>{o}</option>)}
-          </select>
-        </Labeled>
-        <Labeled label="Min / Max beds">
-          <div className="flex gap-1">
-            <input type="number" className="field-sm" value={seg.minBeds ?? ""} onChange={(e) => onMeta({ minBeds: toNum(e.target.value) })} />
-            <input type="number" className="field-sm" value={seg.maxBeds ?? ""} onChange={(e) => onMeta({ maxBeds: toNum(e.target.value) })} />
-          </div>
-        </Labeled>
-        <Labeled label="Total (inc SSTC)">
-          <input type="number" className="field-sm" value={seg.totalIncSstc ?? ""} onChange={(e) => onMeta({ totalIncSstc: toNum(e.target.value) })} />
-        </Labeled>
-        <Labeled label="Unsold (exc SSTC)">
-          <input type="number" className="field-sm" value={seg.totalExcSstc ?? ""} onChange={(e) => onMeta({ totalExcSstc: toNum(e.target.value) })} />
-        </Labeled>
+      {/* Comparables table */}
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-[12px]">
+          <colgroup>
+            <col style={{ width: 34 }} />
+            {COLS.map((c) => <col key={c.key} style={{ width: c.w }} />)}
+            <col style={{ width: 70 }} />
+          </colgroup>
+          <thead>
+            <tr>
+              <th className="border border-[#C9C6BF] bg-[#EAEEE3] px-1 py-1.5 text-[11px] font-semibold" />
+              {COLS.map((c) => (
+                <th
+                  key={c.key}
+                  className="border border-[#C9C6BF] px-1.5 py-1.5 text-center text-[11px] font-semibold leading-tight"
+                  style={headStyle(c)}
+                  title={c.calc ? "Calculated automatically" : c.req ? "Required" : undefined}
+                >
+                  {c.label}
+                  {c.req && " *"}
+                </th>
+              ))}
+              <th className="border border-[#C9C6BF] bg-[#EAEEE3] px-1 py-1.5 text-[11px] font-semibold">Row</th>
+            </tr>
+          </thead>
+          <tbody>
+            {seg.comps.map((comp, i) => {
+              const ppm2 = pricePerM2(comp);
+              const dom = daysOnMarket(comp);
+              return (
+                <tr key={comp.id} className="hover:bg-paper-warm/40">
+                  <td className="border border-[#DDDBD6] px-1 text-center text-[11px] tabular-nums text-ink-muted">{i + 1}</td>
+                  <td className="border border-[#DDDBD6]"><input className={cell} value={comp.property} onChange={(e) => onComp(comp.id, { property: e.target.value })} /></td>
+                  <td className="border border-[#DDDBD6]"><input className={cell} value={comp.area} onChange={(e) => onComp(comp.id, { area: e.target.value })} /></td>
+                  <td className="border border-[#DDDBD6]"><input type="number" className={`${cell} text-right tabular-nums`} value={comp.askingPrice ?? ""} onChange={(e) => onComp(comp.id, { askingPrice: toNum(e.target.value) })} /></td>
+                  <td className="border border-[#DDDBD6]"><input type="number" className={`${cell} text-right tabular-nums`} value={comp.beds ?? ""} onChange={(e) => onComp(comp.id, { beds: toNum(e.target.value) })} /></td>
+                  <td className="border border-[#DDDBD6]">
+                    <select className={cell} value={comp.condition} onChange={(e) => onComp(comp.id, { condition: e.target.value })}>
+                      <option value="">—</option>
+                      {MAC_OPTIONS.condition.map((o) => <option key={o}>{o}</option>)}
+                    </select>
+                  </td>
+                  <td className="border border-[#DDDBD6]">
+                    <select className={cell} value={comp.kerbAppeal} onChange={(e) => onComp(comp.id, { kerbAppeal: e.target.value })}>
+                      <option value="">—</option>
+                      {MAC_OPTIONS.kerbAppeal.map((o) => <option key={o}>{o}</option>)}
+                    </select>
+                  </td>
+                  <td className="border border-[#DDDBD6]">
+                    <select className={cell} value={comp.proximity} onChange={(e) => onComp(comp.id, { proximity: e.target.value })}>
+                      <option value="">—</option>
+                      {MAC_OPTIONS.proximity.map((o) => <option key={o}>{o}</option>)}
+                    </select>
+                  </td>
+                  <td className="border border-[#DDDBD6]">
+                    <select className={cell} value={comp.similarity} onChange={(e) => onComp(comp.id, { similarity: e.target.value })}>
+                      <option value="">—</option>
+                      {MAC_OPTIONS.similarity.map((o) => <option key={o}>{o}</option>)}
+                    </select>
+                  </td>
+                  <td className="border border-[#DDDBD6]"><input type="number" className={`${cell} text-right tabular-nums`} value={comp.totalM2 ?? ""} onChange={(e) => onComp(comp.id, { totalM2: toNum(e.target.value) })} /></td>
+                  <td className="border border-[#DDDBD6]">
+                    <select className={cell} value={comp.m2Source} onChange={(e) => onComp(comp.id, { m2Source: e.target.value })}>
+                      <option value="">—</option>
+                      {MAC_OPTIONS.m2Source.map((o) => <option key={o}>{o}</option>)}
+                    </select>
+                  </td>
+                  <td className="border border-[#DDDBD6] bg-paper-warm/50 px-1.5 text-right tabular-nums text-ink-soft">{ppm2 ? gbp(ppm2) : "—"}</td>
+                  <td className="border border-[#DDDBD6]"><input className={cell} value={comp.agent} onChange={(e) => onComp(comp.id, { agent: e.target.value })} /></td>
+                  <td className="border border-[#DDDBD6]"><input type="date" className={`${cell} tabular-nums`} value={comp.onMarketSince} onChange={(e) => onComp(comp.id, { onMarketSince: e.target.value })} /></td>
+                  <td className="border border-[#DDDBD6] bg-paper-warm/50 px-1.5 text-right tabular-nums text-ink-soft">{dom ?? "—"}</td>
+                  <td className="border border-[#DDDBD6]">
+                    <select className={cell} value={comp.status} onChange={(e) => onComp(comp.id, { status: e.target.value })}>
+                      <option value="">—</option>
+                      {MAC_OPTIONS.status.map((o) => <option key={o}>{o}</option>)}
+                    </select>
+                  </td>
+                  <td className="border border-[#DDDBD6]"><input className={cell} value={comp.comments} onChange={(e) => onComp(comp.id, { comments: e.target.value })} /></td>
+                  <td className="border border-[#DDDBD6]">
+                    <span className="flex items-center gap-1">
+                      <input className={cell} value={comp.link} onChange={(e) => onComp(comp.id, { link: e.target.value })} placeholder="https://" />
+                      {comp.link && (
+                        <a href={comp.link} target="_blank" rel="noreferrer" title="Open listing" className="shrink-0 pr-1 text-bronze-dark">↗</a>
+                      )}
+                    </span>
+                  </td>
+                  <td className="border border-[#DDDBD6] px-1">
+                    <span className="flex items-center justify-center gap-1.5">
+                      <button onClick={() => onDuplicateComp(comp.id)} title="Copy this row" className="text-ink-muted hover:text-bronze-dark">⧉</button>
+                      <button onClick={() => onRemoveComp(comp.id)} title="Remove this row" className="text-ink-muted hover:text-status-stop">✕</button>
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+            {seg.comps.length === 0 && (
+              <tr>
+                <td colSpan={COLS.length + 2} className="border border-[#DDDBD6] px-3 py-6 text-center text-ink-muted">
+                  No comparables yet — add a row below.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
-      {/* Comps */}
-      <div className="space-y-3 px-5 py-4">
-        {seg.comps.map((comp, i) => {
-          const ppm2 = pricePerM2(comp);
-          const dom = daysOnMarket(comp);
-          return (
-            <div key={comp.id} className="rounded-lg border border-paper-line p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wide text-bronze-dark">Comp {i + 1}</span>
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="rounded bg-paper-warm px-2 py-0.5 tabular-nums text-ink-soft">
-                    £/m²: <strong>{ppm2 ? num(ppm2) : "—"}</strong>
-                  </span>
-                  <span className="rounded bg-paper-warm px-2 py-0.5 tabular-nums text-ink-soft">
-                    DoM: <strong>{dom ?? "—"}</strong>
-                  </span>
-                  {seg.comps.length > 1 && (
-                    <button onClick={() => onRemoveComp(comp.id)} className="text-ink-muted hover:text-status-stop">✕</button>
-                  )}
-                </div>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                <Labeled label="Property"><input className="field-sm" value={comp.property} onChange={(e) => onComp(comp.id, { property: e.target.value })} /></Labeled>
-                <Labeled label="Area"><input className="field-sm" value={comp.area} onChange={(e) => onComp(comp.id, { area: e.target.value })} /></Labeled>
-                <Labeled label="Type">
-                  <select className="field-sm" value={comp.propertyType} onChange={(e) => onComp(comp.id, { propertyType: e.target.value })}>
-                    <option value="">—</option>
-                    {MAC_OPTIONS.propertyType.map((o) => <option key={o}>{o}</option>)}
-                  </select>
-                </Labeled>
-                <Labeled label="Beds"><input type="number" className="field-sm" value={comp.beds ?? ""} onChange={(e) => onComp(comp.id, { beds: toNum(e.target.value) })} /></Labeled>
-                <Labeled label="Asking price (£)"><input type="number" className="field-sm" value={comp.askingPrice ?? ""} onChange={(e) => onComp(comp.id, { askingPrice: toNum(e.target.value) })} /></Labeled>
-                <Labeled label="Total m²"><input type="number" className="field-sm" value={comp.totalM2 ?? ""} onChange={(e) => onComp(comp.id, { totalM2: toNum(e.target.value) })} /></Labeled>
-                <Labeled label="m² source">
-                  <select className="field-sm" value={comp.m2Source} onChange={(e) => onComp(comp.id, { m2Source: e.target.value })}>
-                    <option value="">—</option>
-                    {MAC_OPTIONS.m2Source.map((o) => <option key={o}>{o}</option>)}
-                  </select>
-                </Labeled>
-                <Labeled label="Status">
-                  <select className="field-sm" value={comp.status} onChange={(e) => onComp(comp.id, { status: e.target.value })}>
-                    <option value="">—</option>
-                    {MAC_OPTIONS.status.map((o) => <option key={o}>{o}</option>)}
-                  </select>
-                </Labeled>
-                <Labeled label="Condition">
-                  <select className="field-sm" value={comp.condition} onChange={(e) => onComp(comp.id, { condition: e.target.value })}>
-                    <option value="">—</option>
-                    {MAC_OPTIONS.condition.map((o) => <option key={o}>{o}</option>)}
-                  </select>
-                </Labeled>
-                <Labeled label="Kerb appeal">
-                  <select className="field-sm" value={comp.kerbAppeal} onChange={(e) => onComp(comp.id, { kerbAppeal: e.target.value })}>
-                    <option value="">—</option>
-                    {MAC_OPTIONS.kerbAppeal.map((o) => <option key={o}>{o}</option>)}
-                  </select>
-                </Labeled>
-                <Labeled label="Proximity">
-                  <select className="field-sm" value={comp.proximity} onChange={(e) => onComp(comp.id, { proximity: e.target.value })}>
-                    <option value="">—</option>
-                    {MAC_OPTIONS.proximity.map((o) => <option key={o}>{o}</option>)}
-                  </select>
-                </Labeled>
-                <Labeled label="Similarity">
-                  <select className="field-sm" value={comp.similarity} onChange={(e) => onComp(comp.id, { similarity: e.target.value })}>
-                    <option value="">—</option>
-                    {MAC_OPTIONS.similarity.map((o) => <option key={o}>{o}</option>)}
-                  </select>
-                </Labeled>
-                <Labeled label="Agent"><input className="field-sm" value={comp.agent} onChange={(e) => onComp(comp.id, { agent: e.target.value })} /></Labeled>
-                <Labeled label="On market since"><input type="date" className="field-sm" value={comp.onMarketSince} onChange={(e) => onComp(comp.id, { onMarketSince: e.target.value })} /></Labeled>
-                <Labeled label="Listing link"><input className="field-sm" value={comp.link} onChange={(e) => onComp(comp.id, { link: e.target.value })} /></Labeled>
-                <Labeled label="Comments" full><input className="field-sm" value={comp.comments} onChange={(e) => onComp(comp.id, { comments: e.target.value })} /></Labeled>
-              </div>
-            </div>
-          );
-        })}
-        <button onClick={onAddComp} className="btn-ghost w-full">+ Add comparable</button>
+      <div className="flex items-center gap-2 px-5 py-3">
+        <button onClick={onAddComp} className="btn-ghost px-3 py-1.5 text-xs">+ Add row</button>
+        <span className="text-[11px] text-ink-muted">⧉ copies a row · ✕ removes it · £ Per m2 and Days on Market calculate themselves</span>
       </div>
 
       {/* Segment summary */}
@@ -452,15 +570,6 @@ function YesNo({ value, onChange }: { value: boolean; onChange: (v: boolean) => 
     >
       {value ? "Yes" : "No"}
     </button>
-  );
-}
-
-function Labeled({ label, children, full }: { label: string; children: React.ReactNode; full?: boolean }) {
-  return (
-    <label className={`block ${full ? "sm:col-span-2 lg:col-span-4" : ""}`}>
-      <span className="mb-0.5 block text-[10px] font-medium uppercase tracking-wide text-ink-muted">{label}</span>
-      {children}
-    </label>
   );
 }
 
