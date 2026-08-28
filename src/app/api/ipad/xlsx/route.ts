@@ -102,6 +102,13 @@ export async function GET(req: NextRequest) {
   put("G35", inp.demolition);
   put("G36", inp.asbestos);
   put("H37", inp.commercialRatePerM2);
+  // The template ships without a cost formula in G37, unlike its siblings G38
+  // and G39 (=SUM(E7*H38/39)). Left as-is the commercial construction cost came
+  // out as £0 in Excel, which dragged the contingency and every %-of-
+  // construction fee down with it — Express House read 62.4% profit on GDV
+  // against the app's 25.4%. Write the formula the row should have had, with a
+  // cached result so the figure is right even before Excel recalculates.
+  ws.getCell("G37").value = { formula: "SUM(E7*H37)", result: commercial };
   put("H38", inp.industrialRatePerM2);
   put("H39", inp.newBuildRatePerM2);
   put("G40", inp.landscaping);
