@@ -18,6 +18,7 @@ export const PROPERTY_TYPE_OPTIONS = [
   "Leisure",
   "Restaurant / Cafe",
   "Land / Development",
+  "Residential",
   "Other",
 ];
 
@@ -33,6 +34,8 @@ const COUNTY_OUTCODES: Record<string, string[]> = {
   "west sussex": ["RH", "BN", "PO"],
   "brighton and hove": ["BN"],
   "brighton & hove": ["BN"],
+  // Towns, so a listing naming the town still matches on postcode alone.
+  swindon: ["SN"],
 };
 
 const TYPE_KEYWORDS: Record<string, RegExp> = {
@@ -44,6 +47,7 @@ const TYPE_KEYWORDS: Record<string, RegExp> = {
   leisure: /\bleisure\b/i,
   "restaurant / cafe": /\b(restaurant|caf[eé]|takeaway|a3\b|food)\b/i,
   "land / development": /\b(land|development|plot|site)\b/i,
+  residential: /\b(residential|houses?|bungalows?|flats?|apartments?|maisonettes?|cottages?|semi[- ]detached|terraced|\d+\s*bed(room)?s?)\b/i,
 };
 
 export interface CriteriaResult {
