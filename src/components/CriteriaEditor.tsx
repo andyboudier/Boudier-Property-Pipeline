@@ -9,6 +9,7 @@ export function CriteriaEditor({ initial }: { initial: MonitorCriteria }) {
   const [c, setC] = useState<MonitorCriteria>(initial);
   const [areasText, setAreasText] = useState(initial.areas.join(", "));
   const [excludeText, setExcludeText] = useState((initial.excludeKeywords ?? []).join(", "));
+  const [resOutcodesText, setResOutcodesText] = useState((initial.residentialOutcodes ?? []).join(", "));
   const [pending, startTransition] = useTransition();
   const [savedAt, setSavedAt] = useState<string | null>(null);
 
@@ -23,7 +24,8 @@ export function CriteriaEditor({ initial }: { initial: MonitorCriteria }) {
   function save() {
     const areas = areasText.split(",").map((a) => a.trim()).filter(Boolean);
     const excludeKeywords = excludeText.split(",").map((a) => a.trim()).filter(Boolean);
-    const next = { ...c, areas, excludeKeywords };
+    const residentialOutcodes = resOutcodesText.split(",").map((a) => a.trim()).filter(Boolean);
+    const next = { ...c, areas, excludeKeywords, residentialOutcodes };
     startTransition(async () => {
       await actionSaveCriteria(next);
       setC(next);
@@ -79,6 +81,15 @@ export function CriteriaEditor({ initial }: { initial: MonitorCriteria }) {
       <div className="mt-4">
         <span className="label">Areas (comma-separated — counties, towns or postcode areas)</span>
         <input className="field" value={areasText} onChange={(e) => { setAreasText(e.target.value); setSavedAt(null); }} placeholder="Berkshire, Hampshire, Wiltshire, Surrey, Oxfordshire" />
+      </div>
+
+      <div className="mt-4">
+        <span className="label">Residential postcodes (comma-separated outcodes — blank for no limit)</span>
+        <input className="field" value={resOutcodesText} onChange={(e) => { setResOutcodesText(e.target.value); setSavedAt(null); }} placeholder="SN1, SN2" />
+        <span className="mt-0.5 block text-[10px] text-ink-muted">
+          Applies to residential listings only — commercial follows Areas above. Residential also has to look like a development
+          opportunity (land, a site, a conversion, a block, something derelict, or consent granted).
+        </span>
       </div>
 
       <div className="mt-4">

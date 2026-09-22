@@ -7,6 +7,7 @@ export const DEFAULT_CRITERIA: MonitorCriteria = {
   includeIfNoPrice: true,
   areas: ["Berkshire", "Hampshire", "Wiltshire", "Surrey", "Oxfordshire"],
   excludeKeywords: ["industrial estate", "business park", "tenants", "fri basis"],
+  residentialOutcodes: [],
 };
 
 export const PROPERTY_TYPE_OPTIONS = [
@@ -106,12 +107,19 @@ export function matchesCriteria(
     }
   }
 
-  // Residential is in scope only as development stock (see DEV_SIGNAL).
+  // Residential is in scope only as development stock (see DEV_SIGNAL), and can
+  // be confined to specific outcodes. Commercial is judged by `areas` alone.
   if (c.propertyTypes.some((t) => t.toLowerCase() === "residential")) {
     const looksResidential = TYPE_KEYWORDS.residential.test(text);
     const looksCommercial = COMMERCIAL_TYPE_KEYS.some((k) => TYPE_KEYWORDS[k]?.test(text));
-    if (looksResidential && !looksCommercial && !DEV_SIGNAL.test(text)) {
-      reasons.push("residential, not a development opportunity");
+    if (looksResidential && !looksCommercial) {
+      if (!DEV_SIGNAL.test(text)) reasons.push("residential, not a development opportunity");
+      const outs = (c.residentialOutcodes ?? []).map((o) => o.toUpperCase().replace(/\s+/g, "")).filter(Boolean);
+      if (outs.length) {
+        // (?!\d) so SN1 doesn't swallow SN11 and SN2 doesn't swallow SN25.
+        const re = new RegExp(`\\b(${outs.join("|")})(?!\\d)`, "i");
+        if (!re.test(text)) reasons.push(`residential outside ${outs.join("/")}`);
+      }
     }
   }
 
