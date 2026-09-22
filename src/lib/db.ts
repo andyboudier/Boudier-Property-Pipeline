@@ -3,7 +3,8 @@ import type { Property, ProcedabilitySettings, Dcas, Mac, Ipad, PropertySnapshot
 import { getDb, isFirestoreConfigured } from "./firebaseAdmin";
 import { SEED_PROPERTIES } from "./seedData";
 import { DEFAULT_SETTINGS } from "./procedability";
-import { DEFAULT_CRITERIA } from "./monitorCriteria";
+import { DEFAULT_CRITERIA, DEFAULT_RESIDENTIAL_CRITERIA } from "./monitorCriteria";
+import type { ProspectKind } from "./prospectKind";
 
 const COLLECTION = "properties";
 const SNAPSHOTS = "snapshots";
@@ -20,7 +21,7 @@ const g = globalThis as unknown as {
   __boudierSnapshots?: PropertySnapshot[];
   __boudierLeads?: Lead[];
   __boudierWatch?: WatchSource[];
-  __boudierCriteria?: MonitorCriteria;
+  __boudierCriteria?: Partial<Record<ProspectKind, MonitorCriteria>>;
   __boudierIgnored?: IgnoredUrl[];
   __boudierContacts?: Contact[];
   __boudierInsolvencyCursor?: number;
@@ -425,20 +426,34 @@ export async function deleteContact(id: string): Promise<void> {
   await db.collection(CONTACTS).doc(id).delete();
 }
 
-// ── Monitor criteria (editable filter) ────────────────────────────────────────
-export async function getMonitorCriteria(): Promise<MonitorCriteria> {
+// ── Monitor criteria (editable filter, one set per prospect area) ─────────────
+// "monitor" stays the commercial document so existing settings carry over.
+const CRITERIA_DOC: Record<ProspectKind, string> = {
+  commercial: "monitor",
+  residential: "monitorResidential",
+};
+
+export async function getMonitorCriteria(kind: ProspectKind = "commercial"): Promise<MonitorCriteria> {
+  const fallback = kind === "residential" ? DEFAULT_RESIDENTIAL_CRITERIA : DEFAULT_CRITERIA;
   const db = getDb();
-  if (!db) return g.__boudierCriteria ?? DEFAULT_CRITERIA;
-  const doc = await db.collection("config").doc("monitor").get();
-  return doc.exists ? { ...DEFAULT_CRITERIA, ...(doc.data() as Partial<MonitorCriteria>) } : DEFAULT_CRITERIA;
+  if (!db) return g.__boudierCriteria?.[kind] ?? fallback;
+  const doc = await db.collection("config").doc(CRITERIA_DOC[kind]).get();
+  return doc.exists ? { ...fallback, ...(doc.data() as Partial<MonitorCriteria>) } : fallback;
 }
-export async function saveMonitorCriteria(c: MonitorCriteria): Promise<void> {
+
+/** Both areas' criteria in one round trip, for the scanner. */
+export async function getAllMonitorCriteria(): Promise<Record<ProspectKind, MonitorCriteria>> {
+  const [commercial, residential] = await Promise.all([getMonitorCriteria("commercial"), getMonitorCriteria("residential")]);
+  return { commercial, residential };
+}
+
+export async function saveMonitorCriteria(kind: ProspectKind, c: MonitorCriteria): Promise<void> {
   const db = getDb();
   if (!db) {
-    g.__boudierCriteria = c;
+    g.__boudierCriteria = { ...(g.__boudierCriteria ?? {}), [kind]: c };
     return;
   }
-  await db.collection("config").doc("monitor").set(stripUndefined(c));
+  await db.collection("config").doc(CRITERIA_DOC[kind]).set(stripUndefined(c));
 }
 
 // Rolling cursor for the UK-wide (area-ignoring) insolvency sweep, so repeated

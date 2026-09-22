@@ -7,7 +7,19 @@ export const DEFAULT_CRITERIA: MonitorCriteria = {
   includeIfNoPrice: true,
   areas: ["Berkshire", "Hampshire", "Wiltshire", "Surrey", "Oxfordshire"],
   excludeKeywords: ["industrial estate", "business park", "tenants", "fri basis"],
-  residentialOutcodes: [],
+  outcodes: [],
+};
+
+// Residential is only of interest as development stock, and is usually pinned
+// to a handful of outcodes rather than whole counties.
+export const DEFAULT_RESIDENTIAL_CRITERIA: MonitorCriteria = {
+  propertyTypes: ["Residential", "Land / Development"],
+  maxSqFt: null,
+  maxPrice: 1800000,
+  includeIfNoPrice: true,
+  areas: [],
+  excludeKeywords: ["tenants", "fri basis"],
+  outcodes: [],
 };
 
 export const PROPERTY_TYPE_OPTIONS = [
@@ -107,20 +119,23 @@ export function matchesCriteria(
     }
   }
 
-  // Residential is in scope only as development stock (see DEV_SIGNAL), and can
-  // be confined to specific outcodes. Commercial is judged by `areas` alone.
+  // Residential stock has to look like a development opportunity (see
+  // DEV_SIGNAL). Only applies where Residential is a selected type, so a
+  // commercial area never judges a listing by this rule.
   if (c.propertyTypes.some((t) => t.toLowerCase() === "residential")) {
     const looksResidential = TYPE_KEYWORDS.residential.test(text);
     const looksCommercial = COMMERCIAL_TYPE_KEYS.some((k) => TYPE_KEYWORDS[k]?.test(text));
-    if (looksResidential && !looksCommercial) {
-      if (!DEV_SIGNAL.test(text)) reasons.push("residential, not a development opportunity");
-      const outs = (c.residentialOutcodes ?? []).map((o) => o.toUpperCase().replace(/\s+/g, "")).filter(Boolean);
-      if (outs.length) {
-        // (?!\d) so SN1 doesn't swallow SN11 and SN2 doesn't swallow SN25.
-        const re = new RegExp(`\\b(${outs.join("|")})(?!\\d)`, "i");
-        if (!re.test(text)) reasons.push(`residential outside ${outs.join("/")}`);
-      }
+    if (looksResidential && !looksCommercial && !DEV_SIGNAL.test(text)) {
+      reasons.push("residential, not a development opportunity");
     }
+  }
+
+  // Optional narrowing to specific outcodes, on top of `areas`.
+  const outs = (c.outcodes ?? []).map((o) => o.toUpperCase().replace(/\s+/g, "")).filter(Boolean);
+  if (outs.length) {
+    // (?!\d) so SN1 doesn't swallow SN11 and SN2 doesn't swallow SN25.
+    const re = new RegExp(`\\b(${outs.join("|")})(?!\\d)`, "i");
+    if (!re.test(text)) reasons.push(`outside ${outs.join("/")}`);
   }
 
   if (c.maxSqFt != null && f.sizeSqFt != null && f.sizeSqFt > c.maxSqFt) reasons.push("too large");

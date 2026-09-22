@@ -309,9 +309,9 @@ export interface MonitorCriteria {
   includeIfNoPrice: boolean; // keep listings with no price quoted
   areas: string[]; // counties / towns / postcode areas to include
   excludeKeywords: string[]; // reject if any of these appear in the listing text
-  // Outcodes (e.g. SN1, SN2) that RESIDENTIAL listings are confined to. Empty
-  // means no extra restriction. Commercial is unaffected and follows `areas`.
-  residentialOutcodes?: string[];
+  // Outcodes (e.g. SN1, SN2) this area is confined to, on top of `areas`.
+  // Empty means no extra restriction.
+  outcodes?: string[];
 }
 
 // An agent search/results page to scan periodically for new listings.

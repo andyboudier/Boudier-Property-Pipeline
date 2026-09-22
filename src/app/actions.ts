@@ -263,8 +263,8 @@ export async function actionDeleteWatch(id: string) {
   revalidateProspects();
   return { ok: true };
 }
-export async function actionSaveCriteria(criteria: MonitorCriteria) {
-  await saveMonitorCriteria(criteria);
+export async function actionSaveCriteria(kind: "commercial" | "residential", criteria: MonitorCriteria) {
+  await saveMonitorCriteria(kind, criteria);
   revalidateProspects();
   return { ok: true };
 }

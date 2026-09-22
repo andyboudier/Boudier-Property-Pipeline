@@ -1,6 +1,6 @@
 import "server-only";
-import { classifyKind } from "./prospectKind";
-import { getMonitorCriteria, addLead, leadExistsForUrl, ignoredUrlSet, getInsolvencyCursor, saveInsolvencyCursor, listProperties, listLeads } from "./db";
+import { classifyKind, type ProspectKind } from "./prospectKind";
+import { getAllMonitorCriteria, addLead, leadExistsForUrl, ignoredUrlSet, getInsolvencyCursor, saveInsolvencyCursor, listProperties, listLeads } from "./db";
 import { matchesCriteria } from "./monitorCriteria";
 import { buildAddressKeySet, matchesKnownAddress } from "./addressMatch";
 
@@ -182,7 +182,7 @@ export async function scanInsolvency(opts: { national?: boolean } = {}): Promise
   }
   const t0 = Date.now();
   const [criteria, ignored, properties, existingLeads] = await Promise.all([
-    getMonitorCriteria(),
+    getAllMonitorCriteria(),
     ignoredUrlSet(),
     listProperties(),
     listLeads(),
@@ -202,7 +202,10 @@ export async function scanInsolvency(opts: { national?: boolean } = {}): Promise
   let windowStart = 0;
   let windowEnd = 0;
   let totalNational = 0;
-  const matchCriteria = opts.national ? { ...criteria, areas: [] } : criteria;
+  // Each property is judged by its own area's criteria; a national sweep
+  // deliberately ignores the area lists.
+  const criteriaFor = (kind: ProspectKind) =>
+    opts.national ? { ...criteria[kind], areas: [], outcodes: [] } : criteria[kind];
 
   if (opts.national) {
     windowStart = await getInsolvencyCursor();
@@ -214,7 +217,9 @@ export async function scanInsolvency(opts: { national?: boolean } = {}): Promise
     const next = total > 0 && windowEnd >= total ? 0 : windowEnd;
     await saveInsolvencyCursor(next);
   } else {
-    companies = await searchLiquidationCompanies(criteria.areas);
+    // Search on both areas' lists so neither side's patch is missed.
+    const searchAreas = [...new Set([...criteria.commercial.areas, ...criteria.residential.areas])];
+    companies = await searchLiquidationCompanies(searchAreas);
   }
 
   let created = 0;
@@ -245,7 +250,8 @@ export async function scanInsolvency(opts: { national?: boolean } = {}): Promise
       // Already in the pipeline or the prospect list under another source? Skip.
       if (matchesKnownAddress(prop.address, knownAddresses)) continue;
 
-      const verdict = matchesCriteria({ name: prop.address, town: "", currentUse: "", notes: "" }, matchCriteria);
+      const leadKind = classifyKind(prop.address);
+      const verdict = matchesCriteria({ name: prop.address, town: "", currentUse: "", notes: "" }, criteriaFor(leadKind));
       if (!verdict.include) {
         skipped.push({ property: prop.address, company: co.name, reasons: verdict.reasons });
         continue;
@@ -254,7 +260,7 @@ export async function scanInsolvency(opts: { national?: boolean } = {}): Promise
       const townPart = prop.address.split(",").map((s) => s.trim()).filter((s) => !POSTCODE_RE.test(s)).pop() ?? "";
       await addLead({
         status: "new",
-        kind: classifyKind(prop.address),
+        kind: leadKind,
         source: "Insolvency (Companies House)",
         url,
         name: prop.address,

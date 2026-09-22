@@ -7,7 +7,7 @@ import {
   addLead,
   listProperties,
   listLeads,
-  getMonitorCriteria,
+  getAllMonitorCriteria,
   updateLead,
   updateProperty,
   ignoredUrlSet,
@@ -94,7 +94,7 @@ export interface ScanSummary {
 export async function runScan(): Promise<ScanSummary> {
   const [watches, criteria, properties, leads, ignored] = await Promise.all([
     listWatch(),
-    getMonitorCriteria(),
+    getAllMonitorCriteria(),
     listProperties(),
     listLeads(),
     ignoredUrlSet(),
@@ -198,7 +198,10 @@ export async function runScan(): Promise<ScanSummary> {
             skipped++;
             return;
           }
-          const verdict = matchesCriteria(res.fields, criteria);
+          // Commercial and residential have their own criteria; classify the
+          // listing first, then judge it by the matching area's rules.
+          const leadKind = classifyKind(res.fields);
+          const verdict = matchesCriteria(res.fields, criteria[leadKind]);
           examined.push({ url, name: res.fields.name, ok: verdict.include, reasons: verdict.reasons });
           if (!verdict.include) {
             skipped++;
@@ -206,7 +209,7 @@ export async function runScan(): Promise<ScanSummary> {
           }
           await addLead({
             status: "new",
-            kind: classifyKind(res.fields),
+            kind: leadKind,
             source: res.fields.listingSource || res.source || "Web",
             url,
             name: res.fields.name,

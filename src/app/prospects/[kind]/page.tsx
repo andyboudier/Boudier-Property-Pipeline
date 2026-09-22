@@ -29,7 +29,7 @@ export default async function ProspectsAreaPage({ params }: { params: { kind: st
   if (kind !== "commercial" && kind !== "residential") notFound();
   const area = AREAS[kind];
 
-  const [leads, watch, criteria] = await Promise.all([listLeads(), listWatch(), getMonitorCriteria()]);
+  const [leads, watch, criteria] = await Promise.all([listLeads(), listWatch(), getMonitorCriteria(kind)]);
   // Leads saved before the split have no kind — classify them on the fly so
   // nothing disappears from view.
   const mine = leads.filter((l) => (l.kind ?? classifyKind(l)) === kind);
@@ -49,7 +49,7 @@ export default async function ProspectsAreaPage({ params }: { params: { kind: st
         <p className="text-sm text-ink-muted">{area.blurb}</p>
       </div>
       <ProspectsBoard initialLeads={mine} initialWatch={watchForArea} kind={kind} />
-      <CriteriaEditor initial={criteria} />
+      <CriteriaEditor initial={criteria} kind={kind} />
     </div>
   );
 }

@@ -5,11 +5,17 @@ import type { MonitorCriteria } from "@/lib/types";
 import { PROPERTY_TYPE_OPTIONS } from "@/lib/monitorCriteria";
 import { actionSaveCriteria } from "@/app/actions";
 
-export function CriteriaEditor({ initial }: { initial: MonitorCriteria }) {
+export function CriteriaEditor({
+  initial,
+  kind,
+}: {
+  initial: MonitorCriteria;
+  kind: "commercial" | "residential";
+}) {
   const [c, setC] = useState<MonitorCriteria>(initial);
   const [areasText, setAreasText] = useState(initial.areas.join(", "));
   const [excludeText, setExcludeText] = useState((initial.excludeKeywords ?? []).join(", "));
-  const [resOutcodesText, setResOutcodesText] = useState((initial.residentialOutcodes ?? []).join(", "));
+  const [outcodesText, setOutcodesText] = useState((initial.outcodes ?? []).join(", "));
   const [pending, startTransition] = useTransition();
   const [savedAt, setSavedAt] = useState<string | null>(null);
 
@@ -24,10 +30,10 @@ export function CriteriaEditor({ initial }: { initial: MonitorCriteria }) {
   function save() {
     const areas = areasText.split(",").map((a) => a.trim()).filter(Boolean);
     const excludeKeywords = excludeText.split(",").map((a) => a.trim()).filter(Boolean);
-    const residentialOutcodes = resOutcodesText.split(",").map((a) => a.trim()).filter(Boolean);
-    const next = { ...c, areas, excludeKeywords, residentialOutcodes };
+    const outcodes = outcodesText.split(",").map((a: string) => a.trim()).filter(Boolean);
+    const next = { ...c, areas, excludeKeywords, outcodes };
     startTransition(async () => {
-      await actionSaveCriteria(next);
+      await actionSaveCriteria(kind, next);
       setC(next);
       setSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
     });
@@ -37,7 +43,7 @@ export function CriteriaEditor({ initial }: { initial: MonitorCriteria }) {
 
   return (
     <section className="card p-5">
-      <h2 className="font-serif text-lg text-ink">Monitor criteria</h2>
+      <h2 className="font-serif text-lg text-ink">Monitor criteria — {kind === "residential" ? "residential" : "commercial"}</h2>
       <p className="mt-1 text-xs text-ink-muted">
         Applied to auto-monitored listings before they become prospects. Manually added prospects are never filtered.
       </p>
@@ -84,11 +90,11 @@ export function CriteriaEditor({ initial }: { initial: MonitorCriteria }) {
       </div>
 
       <div className="mt-4">
-        <span className="label">Residential postcodes (comma-separated outcodes — blank for no limit)</span>
-        <input className="field" value={resOutcodesText} onChange={(e) => { setResOutcodesText(e.target.value); setSavedAt(null); }} placeholder="SN1, SN2" />
+        <span className="label">Postcodes (comma-separated outcodes — blank for no limit)</span>
+        <input className="field" value={outcodesText} onChange={(e) => { setOutcodesText(e.target.value); setSavedAt(null); }} placeholder="SN1, SN2" />
         <span className="mt-0.5 block text-[10px] text-ink-muted">
-          Applies to residential listings only — commercial follows Areas above. Residential also has to look like a development
-          opportunity (land, a site, a conversion, a block, something derelict, or consent granted).
+          Narrows this area further than Areas above — SN1 will not match SN11 or SN25.
+          {kind === "residential" && " Residential also has to look like a development opportunity (land, a site, a conversion, a block, something derelict, or consent granted)."}
         </span>
       </div>
 
