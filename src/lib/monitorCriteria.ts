@@ -50,6 +50,24 @@ const TYPE_KEYWORDS: Record<string, RegExp> = {
   residential: /\b(residential|houses?|bungalows?|flats?|apartments?|maisonettes?|cottages?|semi[- ]detached|terraced|\d+\s*bed(room)?s?)\b/i,
 };
 
+// Ordinary housing is not a development site. Residential listings are only
+// admitted when they carry one of these signals — land, a site, something to
+// convert, something derelict, a block, or consent already in place.
+const DEV_SIGNAL =
+  /\b(land|plots?|sites?|development|redevelopment|conversions?|convert(ed|ing)?|barns?|derelict|dilapidated|renovation|refurbishment|modernisation|planning (permission|granted|consent)|consented|auction|block of (flats|apartments)|hmo|investment)\b/i;
+
+// The commercial types, so a residential-looking listing that is really a shop
+// with a flat over it isn't judged by the residential rule.
+const COMMERCIAL_TYPE_KEYS = [
+  "office",
+  "retail",
+  "mixed use",
+  "light industrial",
+  "industrial / warehouse",
+  "leisure",
+  "restaurant / cafe",
+];
+
 export interface CriteriaResult {
   include: boolean;
   reasons: string[]; // why it was excluded (empty when included)
@@ -85,6 +103,15 @@ export function matchesCriteria(
     if (!matchesSelected) {
       const anyTypeDetected = Object.values(TYPE_KEYWORDS).some((re) => re.test(text));
       if (anyTypeDetected) reasons.push("type");
+    }
+  }
+
+  // Residential is in scope only as development stock (see DEV_SIGNAL).
+  if (c.propertyTypes.some((t) => t.toLowerCase() === "residential")) {
+    const looksResidential = TYPE_KEYWORDS.residential.test(text);
+    const looksCommercial = COMMERCIAL_TYPE_KEYS.some((k) => TYPE_KEYWORDS[k]?.test(text));
+    if (looksResidential && !looksCommercial && !DEV_SIGNAL.test(text)) {
+      reasons.push("residential, not a development opportunity");
     }
   }
 
