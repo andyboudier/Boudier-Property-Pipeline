@@ -39,7 +39,7 @@ const COUNTY_OUTCODES: Record<string, string[]> = {
   swindon: ["SN"],
 };
 
-const TYPE_KEYWORDS: Record<string, RegExp> = {
+export const TYPE_KEYWORDS: Record<string, RegExp> = {
   office: /\boffices?\b/i,
   retail: /\b(retail|shops?|store|high street|a1\b)/i,
   "mixed use": /\bmixed[ -]?use\b/i,
@@ -59,7 +59,7 @@ const DEV_SIGNAL =
 
 // The commercial types, so a residential-looking listing that is really a shop
 // with a flat over it isn't judged by the residential rule.
-const COMMERCIAL_TYPE_KEYS = [
+export const COMMERCIAL_TYPE_KEYS = [
   "office",
   "retail",
   "mixed use",

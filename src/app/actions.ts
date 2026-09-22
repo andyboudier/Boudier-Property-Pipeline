@@ -30,6 +30,7 @@ import {
   deleteContact,
 } from "@/lib/db";
 import type { MonitorCriteria, Contact } from "@/lib/types";
+import { classifyKind } from "@/lib/prospectKind";
 
 export async function actionSaveDcas(id: string, dcas: Dcas) {
   await saveDcas(id, dcas);
@@ -162,6 +163,7 @@ export async function actionAddProspect(input: { url?: string; html?: string }) 
   const f = res.fields;
   const id = await addLead({
     status: "new",
+    kind: classifyKind(f),
     source: f.listingSource || res.source || "Web",
     url: f.listingUrl || input.url || "",
     name: f.name || "Untitled listing",
@@ -176,13 +178,13 @@ export async function actionAddProspect(input: { url?: string; html?: string }) 
     statusCheckedAt: new Date().toISOString(),
     createdAt: new Date().toISOString(),
   });
-  revalidatePath(`/prospects`);
+  revalidateProspects();
   return { ok: true, id };
 }
 
 export async function actionSetProspectStatus(id: string, status: "new" | "reviewing" | "rejected") {
   await updateLead(id, { status });
-  revalidatePath(`/prospects`);
+  revalidateProspects();
   return { ok: true };
 }
 
@@ -191,7 +193,7 @@ export async function actionDeleteProspect(id: string) {
   const lead = await getLead(id);
   await deleteLead(id);
   if (lead?.url) await addIgnoredUrl(lead.url, lead.name, "deleted prospect");
-  revalidatePath(`/prospects`);
+  revalidateProspects();
   return { ok: true };
 }
 
@@ -236,7 +238,7 @@ export async function actionPromoteProspect(id: string) {
   }
   await updateLead(id, { status: "promoted", promotedPropertyId: propertyId });
   revalidatePath(`/`);
-  revalidatePath(`/prospects`);
+  revalidateProspects();
   return { ok: true as const, propertyId };
 }
 
@@ -244,20 +246,26 @@ export async function actionPromoteProspect(id: string) {
 export async function actionListWatch() {
   return listWatch();
 }
-export async function actionAddWatch(label: string, url: string) {
+// Prospects live at /prospects/commercial and /prospects/residential.
+function revalidateProspects() {
+  revalidatePath("/prospects/commercial");
+  revalidatePath("/prospects/residential");
+}
+
+export async function actionAddWatch(label: string, url: string, kind: "commercial" | "residential" = "commercial") {
   if (!url.trim()) return { ok: false };
-  await addWatch({ label: label.trim() || url, url: url.trim(), createdAt: new Date().toISOString() });
-  revalidatePath(`/prospects`);
+  await addWatch({ label: label.trim() || url, url: url.trim(), kind, createdAt: new Date().toISOString() });
+  revalidateProspects();
   return { ok: true };
 }
 export async function actionDeleteWatch(id: string) {
   await deleteWatch(id);
-  revalidatePath(`/prospects`);
+  revalidateProspects();
   return { ok: true };
 }
 export async function actionSaveCriteria(criteria: MonitorCriteria) {
   await saveMonitorCriteria(criteria);
-  revalidatePath(`/prospects`);
+  revalidateProspects();
   return { ok: true };
 }
 
@@ -265,7 +273,7 @@ export async function actionSaveCriteria(criteria: MonitorCriteria) {
 export async function actionScanInsolvency(opts?: { national?: boolean }) {
   const { scanInsolvency } = await import("@/lib/companiesHouse");
   const result = await scanInsolvency(opts);
-  revalidatePath(`/prospects`);
+  revalidateProspects();
   return result;
 }
 
@@ -273,14 +281,14 @@ export async function actionScanInsolvency(opts?: { national?: boolean }) {
 export async function actionScanNow() {
   const { runScan } = await import("@/lib/scan");
   const summary = await runScan();
-  revalidatePath(`/prospects`);
+  revalidateProspects();
   revalidatePath(`/`);
   return summary;
 }
 
 export async function actionClearLeadAlert(id: string) {
   await updateLead(id, { alert: null });
-  revalidatePath(`/prospects`);
+  revalidateProspects();
   return { ok: true };
 }
 
@@ -473,4 +481,11 @@ export async function actionSetTaskCompleted(listId: string, taskId: string, com
   } catch (e) {
     return { ok: false as const, error: e instanceof Error ? e.message : "Failed to update task" };
   }
+}
+
+/** Move a prospect between the commercial and residential areas. */
+export async function actionSetLeadKind(id: string, kind: "commercial" | "residential") {
+  await updateLead(id, { kind });
+  revalidateProspects();
+  return { ok: true as const };
 }

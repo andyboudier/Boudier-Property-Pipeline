@@ -11,6 +11,7 @@ import {
   actionSetProspectStatus,
   actionDeleteProspect,
   actionAddWatch,
+  actionSetLeadKind,
   actionDeleteWatch,
   actionScanNow,
   actionScanInsolvency,
@@ -41,7 +42,16 @@ function marketBadge(status?: string): { label: string; color: string } | null {
   }
 }
 
-export function ProspectsBoard({ initialLeads, initialWatch }: { initialLeads: Lead[]; initialWatch: WatchSource[] }) {
+export function ProspectsBoard({
+  initialLeads,
+  initialWatch,
+  kind = "commercial",
+}: {
+  initialLeads: Lead[];
+  initialWatch: WatchSource[];
+  kind?: "commercial" | "residential";
+}) {
+  const otherKind = kind === "commercial" ? "residential" : "commercial";
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
@@ -94,6 +104,14 @@ export function ProspectsBoard({ initialLeads, initialWatch }: { initialLeads: L
       router.refresh();
     });
   }
+  // Classification is a heuristic, so allow a prospect to be moved by hand.
+  function moveToOtherArea(l: Lead) {
+    startTransition(async () => {
+      await actionSetLeadKind(l.id, otherKind);
+      router.refresh();
+    });
+  }
+
   function clearAlert(l: Lead) {
     startTransition(async () => {
       await actionClearLeadAlert(l.id);
@@ -218,7 +236,15 @@ export function ProspectsBoard({ initialLeads, initialWatch }: { initialLeads: L
                         Listing ↗
                       </a>
                     )}
-                    <button onClick={() => remove(l)} disabled={pending} className="ml-auto px-2 py-1 text-xs text-ink-muted hover:text-status-stop">
+                    <button
+                      onClick={() => moveToOtherArea(l)}
+                      disabled={pending}
+                      title={`Move this prospect to the ${otherKind} area`}
+                      className="ml-auto px-2 py-1 text-xs text-ink-muted hover:text-bronze-dark"
+                    >
+                      → {otherKind === "commercial" ? "Commercial" : "Residential"}
+                    </button>
+                    <button onClick={() => remove(l)} disabled={pending} className="px-2 py-1 text-xs text-ink-muted hover:text-status-stop">
                       Delete
                     </button>
                   </div>
@@ -254,12 +280,12 @@ export function ProspectsBoard({ initialLeads, initialWatch }: { initialLeads: L
         </section>
       )}
 
-      <Watchlist initialWatch={initialWatch} />
+      <Watchlist initialWatch={initialWatch} kind={kind} />
     </div>
   );
 }
 
-function Watchlist({ initialWatch }: { initialWatch: WatchSource[] }) {
+function Watchlist({ initialWatch, kind }: { initialWatch: WatchSource[]; kind: "commercial" | "residential" }) {
   const router = useRouter();
   const [label, setLabel] = useState("");
   const [url, setUrl] = useState("");
@@ -329,7 +355,7 @@ function Watchlist({ initialWatch }: { initialWatch: WatchSource[] }) {
   function addW() {
     if (!url.trim()) return;
     startTransition(async () => {
-      await actionAddWatch(label, url);
+      await actionAddWatch(label, url, kind);
       setLabel("");
       setUrl("");
       router.refresh();

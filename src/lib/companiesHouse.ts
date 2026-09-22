@@ -1,4 +1,5 @@
 import "server-only";
+import { classifyKind } from "./prospectKind";
 import { getMonitorCriteria, addLead, leadExistsForUrl, ignoredUrlSet, getInsolvencyCursor, saveInsolvencyCursor, listProperties, listLeads } from "./db";
 import { matchesCriteria } from "./monitorCriteria";
 import { buildAddressKeySet, matchesKnownAddress } from "./addressMatch";
@@ -253,6 +254,7 @@ export async function scanInsolvency(opts: { national?: boolean } = {}): Promise
       const townPart = prop.address.split(",").map((s) => s.trim()).filter((s) => !POSTCODE_RE.test(s)).pop() ?? "";
       await addLead({
         status: "new",
+        kind: classifyKind(prop.address),
         source: "Insolvency (Companies House)",
         url,
         name: prop.address,

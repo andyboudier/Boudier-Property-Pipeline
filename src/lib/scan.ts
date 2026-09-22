@@ -15,6 +15,7 @@ import {
 } from "./db";
 import { importListing, fetchRawContent, checkMarketStatus } from "./importListing";
 import { matchesCriteria } from "./monitorCriteria";
+import { classifyKind } from "./prospectKind";
 import { buildAddressKeySet, matchesKnownAddress } from "./addressMatch";
 
 // A URL must look like an individual listing page to be a candidate.
@@ -205,6 +206,7 @@ export async function runScan(): Promise<ScanSummary> {
           }
           await addLead({
             status: "new",
+            kind: classifyKind(res.fields),
             source: res.fields.listingSource || res.source || "Web",
             url,
             name: res.fields.name,

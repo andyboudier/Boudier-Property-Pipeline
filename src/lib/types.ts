@@ -289,6 +289,7 @@ export interface Lead {
   currentUse: string;
   notes: string;
   imageUrl: string;
+  kind?: "commercial" | "residential"; // which prospect area it belongs to
   promotedPropertyId?: string;
   marketStatus?: string; // "For Sale" | "Under Offer" | "Sold" | "Withdrawn" | "" (from the listing)
   alert?: MarketAlert; // raised when the market status changes (sold / back on market)
@@ -317,6 +318,7 @@ export interface MonitorCriteria {
 export interface WatchSource {
   id: string;
   label: string;
+  kind?: "commercial" | "residential"; // which prospect area this feeds
   url: string;
   createdAt: string;
   lastScanAt?: string;

@@ -2,6 +2,7 @@ import { listProperties, listLeads, listContacts } from "@/lib/db";
 import { auth } from "@/auth";
 import { isAuthConfigured } from "@/lib/authConfig";
 import { SplashScreen } from "@/components/SplashScreen";
+import { classifyKind } from "@/lib/prospectKind";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,8 @@ export default async function HomePage() {
     isAuthConfigured() ? auth() : Promise.resolve(null),
   ]);
   const first = (session?.user?.name || "").trim().split(/\s+/)[0] || "";
-  const activeLeads = leads.filter((l) => l.status === "new" || l.status === "reviewing").length;
+  const active = leads.filter((l) => l.status === "new" || l.status === "reviewing");
+  const countFor = (k: "commercial" | "residential") => active.filter((l) => (l.kind ?? classifyKind(l)) === k).length;
 
   const tiles: {
     href: string;
@@ -42,16 +44,30 @@ export default async function HomePage() {
       ),
     },
     {
-      href: "/prospects",
-      label: "Prospects",
-      desc: "Pre-pipeline leads, auto-monitor & insolvency scans",
+      href: "/prospects/commercial",
+      label: "Commercial Prospects",
+      desc: "Offices, retail, industrial, mixed use & development land",
       color: "#C2872B",
-      count: `${activeLeads} to review`,
+      count: `${countFor("commercial")} to review`,
       icon: (
         <Svg>
           <circle cx="10.5" cy="10.5" r="6" fill="currentColor" fillOpacity=".14" />
           <path d="m15.2 15.2 4.8 4.8" />
           <path d="M8 10.5h5M10.5 8v5" strokeOpacity=".85" />
+        </Svg>
+      ),
+    },
+    {
+      href: "/prospects/residential",
+      label: "Residential Prospects",
+      desc: "Land, sites, conversions, blocks & renovation opportunities",
+      color: "#8C6A3F",
+      count: `${countFor("residential")} to review`,
+      icon: (
+        <Svg>
+          <path d="M4 10.5 12 4l8 6.5" />
+          <path d="M6 10v9.5h12V10" fill="currentColor" fillOpacity=".12" />
+          <path d="M10 19.5V14h4v5.5" strokeOpacity=".85" />
         </Svg>
       ),
     },
