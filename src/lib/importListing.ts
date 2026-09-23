@@ -353,6 +353,21 @@ function mergeDrafts(...drafts: (ImportedDraft | null)[]): ImportedDraft {
   return out;
 }
 
+/**
+ * Whether the structured parse already holds everything downstream needs, so the
+ * AI pass would only re-derive what we have.
+ *
+ * Rightmove's PAGE_MODEL is authoritative: if it gave an address and a use class,
+ * a missing price or size means the page doesn't quote one, and re-reading the
+ * same page won't conjure it. Elsewhere the structured data is patchy, so only
+ * skip when it is genuinely complete.
+ */
+function structuredParseIsEnough(f: ImportedDraft, source: string): boolean {
+  if (!f.name || !f.currentUse) return false;
+  if (source === "Rightmove") return true;
+  return f.guidePrice != null && f.sizeSqFt != null;
+}
+
 // ── PDF particulars ──────────────────────────────────────────────────────────
 /**
  * Some agents (Agency Pilot in particular) ship particulars with randomised
@@ -796,11 +811,13 @@ export async function importListing(input: { url?: string; html?: string }): Pro
 
   let fields = mergeDrafts(source === "Rightmove" ? parseRightmove(html) : null, parseJsonLd(html), parseMeta(html));
 
-  // AI extraction (Claude) — robust to any layout. Authoritative for non-Rightmove
-  // sites; fills gaps on Rightmove (where structured data is already accurate).
+  // AI extraction (Claude) — robust to any layout, and authoritative for
+  // non-Rightmove sites. Skipped when the structured parse already has the
+  // fields, which is the common case on the portals: the call cost the same
+  // whether or not it found anything new.
   try {
     const { extractWithAI, htmlToText, isAIConfigured } = await import("./ai");
-    if (isAIConfigured()) {
+    if (isAIConfigured() && !structuredParseIsEnough(fields, source)) {
       const ai = (await extractWithAI(htmlToText(html), source)) as ImportedDraft | null;
       if (ai) fields = source === "Rightmove" ? mergeDrafts(fields, ai) : mergeDrafts(ai, fields);
     }

@@ -5,6 +5,10 @@ import type { ImportedDraft } from "./importListing";
 // structured fields. Robust to any site layout. Inert without ANTHROPIC_API_KEY.
 
 const MODEL = "claude-haiku-4-5";
+// Input is ~all of what an extraction costs (output is a few hundred tokens), so
+// cap how much page text we send. 20k characters is roughly 5k tokens and covers
+// the address, price, size and use class on every listing format we scrape.
+const MAX_CHARS = 20000;
 
 export function isAIConfigured() {
   return !!process.env.ANTHROPIC_API_KEY;
@@ -65,7 +69,7 @@ export async function extractWithAI(content: string, sourceHint?: string): Promi
         content:
           `Extract the property listing details from this ${sourceHint || "property"} page. ` +
           `Distinguish the SALE/guide price from any RENT. Prices in GBP, digits only.\n\n---\n` +
-          content.slice(0, 60000),
+          content.slice(0, MAX_CHARS),
       },
     ],
   });
