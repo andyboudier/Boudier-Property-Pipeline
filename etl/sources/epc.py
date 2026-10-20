@@ -19,7 +19,7 @@ DATASET = "EPC Open Data"
 LICENCE_ENV = "EPC_LICENCE_ACCEPTED"
 SOURCE_URL = "https://get-energy-performance-data.communities.gov.uk"
 TABLE = "stg_epc"
-COLUMNS = ["uprn", "property_type", "certificate_id"]
+COLUMNS = ["uprn", "postcode", "address", "property_type", "certificate_id"]
 
 
 def fetch(la_code: str, dest: str) -> str:
@@ -32,7 +32,8 @@ def _row(rec: dict):
     uprn = get(rec, "uprn")
     if not uprn or not uprn.isdigit():
         return None
-    return (int(uprn), get(rec, "property-type", "property_type"), get(rec, "lmk-key", "lmk_key"))
+    address = ", ".join(x for x in (get(rec, "address1"), get(rec, "address2"), get(rec, "address3")) if x) or get(rec, "address")
+    return (int(uprn), get(rec, "postcode"), address, get(rec, "property_type"), get(rec, "lmk_key"))
 
 
 def load(path: str, conn, la_code: str) -> int:

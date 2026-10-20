@@ -5,6 +5,7 @@ already downloaded under your own account rather than fetching it itself.
 """
 
 import csv
+import re
 import io
 import zipfile
 from pathlib import Path
@@ -38,11 +39,14 @@ def read_rows(path: str) -> Iterator[dict]:
 
 
 def get(rec: dict, *names: str) -> str | None:
-    """Column names drift between releases — try several spellings."""
+    """Column names drift between releases (LMK_KEY, lmk-key, "Lmk Key") —
+    compare on a normalised form so any spelling matches."""
+    norm = lambda k: re.sub(r"[^a-z0-9]", "", k.lower())
+    index = {norm(k): v for k, v in rec.items() if k}
     for n in names:
-        for key in (n, n.upper(), n.lower(), n.replace("_", "-"), n.replace("-", "_")):
-            if key in rec and rec[key] not in (None, ""):
-                return str(rec[key]).strip()
+        v = index.get(norm(n))
+        if v not in (None, ""):
+            return str(v).strip()
     return None
 
 
