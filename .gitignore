@@ -11,3 +11,6 @@ serviceAccount.json
 
 # build cache
 *.tsbuildinfo
+
+# Supabase CLI scratch (version cache, linked-project state)
+supabase/.temp/

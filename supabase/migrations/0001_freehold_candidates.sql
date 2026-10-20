@@ -8,9 +8,20 @@
 -- null and the counts are proxies. Phase 3 swaps in HMLR National Polygon data
 -- and fills title_number, at which point the counts become exact.
 
-create extension if not exists postgis;
+-- Supabase installs PostGIS into the `extensions` schema, so the geometry type
+-- is not on the default search_path. Put it there before the table is created,
+-- or `geometry(MultiPolygon, 4326)` fails with "type geometry does not exist".
+create extension if not exists postgis with schema extensions;
+set search_path = public, extensions;
 
-create type owner_type as enum ('private', 'company', 'overseas', 'public', 'unknown');
+-- Re-runnable: creating the enum twice would otherwise abort the whole script.
+do $$
+begin
+  if not exists (select 1 from pg_type where typname = 'owner_type') then
+    create type owner_type as enum ('private', 'company', 'overseas', 'public', 'unknown');
+  end if;
+end
+$$;
 
 create table if not exists freehold_candidates (
   id                  bigint generated always as identity primary key,
