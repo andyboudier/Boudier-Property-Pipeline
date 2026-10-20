@@ -1,27 +1,36 @@
-"""HMLR Registered Leases.
+"""Every registered lease over seven years.
 
-    Every registered lease over 7 years. Drives lease_count (F3) — the test
-    that a freehold is still unbroken.
+    Drives lease_count (F3) — the test of whether a freehold is still
+    unbroken. Where the lease record has no UPRN the derivation falls back to
+    matching on normalised address and postcode.
 
     Licence: accepted by Andy at https://use-land-property-data.service.gov.uk/datasets/leases — see etl/README.md.
-    """
+"""
 
+from ._csv_source import find_file, get, load_csv
 from ._gate import require_licence
 
 DATASET = "HMLR Registered Leases"
 LICENCE_ENV = "HMLR_LICENCE_ACCEPTED"
 SOURCE_URL = "https://use-land-property-data.service.gov.uk/datasets/leases"
+TABLE = "stg_lease"
+COLUMNS = ["uprn", "address", "postcode"]
 
 
 def fetch(la_code: str, dest: str) -> str:
-    """Download the dataset for one local authority. Returns the local path.
-
-    Phase 1 stub — the licence gate is real, the download is not yet written.
-    """
+    """Locate the file you downloaded under your own account."""
     require_licence(LICENCE_ENV, DATASET, SOURCE_URL)
-    raise NotImplementedError(f"{DATASET}: download not implemented yet (Phase 1)")
+    return find_file(dest, "leases", DATASET, SOURCE_URL)
 
 
-def load(path: str, conn) -> int:
-    """Load a downloaded file into PostGIS. Returns rows loaded."""
-    raise NotImplementedError(f"{DATASET}: load not implemented yet (Phase 1)")
+def _row(rec: dict):
+    uprn = get(rec, "uprn")
+    return (
+        int(uprn) if uprn and uprn.isdigit() else None,
+        get(rec, "associated-property-description", "property_description", "address"),
+        get(rec, "postcode"),
+    )
+
+
+def load(path: str, conn, la_code: str) -> int:
+    return load_csv(path, conn, TABLE, COLUMNS, _row)

@@ -1,27 +1,39 @@
-"""EPC Open Data.
+"""Energy Performance Certificates — domestic and non-domestic.
 
-    Domestic and non-domestic certificates by UPRN. Drives F6 and helps F5.
-    Needs EPC_API_KEY.
+    Drives filter F6 (more than two EPCs on a title, as evidence the building
+    is genuinely multi-unit) and helps classify use for F5.
 
-    Licence: accepted by Andy at https://epc.opendatacommunities.org/ — see etl/README.md.
-    """
+    NOTE: this service MOVED. The old epc.opendatacommunities.org now
+    redirects here, and the old /api/v1/domestic/search path is gone (404).
+    Choose "Download files" on the data-access page and filter to one local
+    authority — bulk CSV is the right shape for an ETL anyway, and avoids
+    paginating an API for tens of thousands of certificates.
 
+    Licence: accepted by Andy at https://get-energy-performance-data.communities.gov.uk — see etl/README.md.
+"""
+
+from ._csv_source import find_file, get, load_csv
 from ._gate import require_licence
 
 DATASET = "EPC Open Data"
 LICENCE_ENV = "EPC_LICENCE_ACCEPTED"
-SOURCE_URL = "https://epc.opendatacommunities.org/"
+SOURCE_URL = "https://get-energy-performance-data.communities.gov.uk"
+TABLE = "stg_epc"
+COLUMNS = ["uprn", "property_type", "certificate_id"]
 
 
 def fetch(la_code: str, dest: str) -> str:
-    """Download the dataset for one local authority. Returns the local path.
-
-    Phase 1 stub — the licence gate is real, the download is not yet written.
-    """
+    """Locate the file you downloaded under your own account."""
     require_licence(LICENCE_ENV, DATASET, SOURCE_URL)
-    raise NotImplementedError(f"{DATASET}: download not implemented yet (Phase 1)")
+    return find_file(dest, "epc", DATASET, SOURCE_URL)
 
 
-def load(path: str, conn) -> int:
-    """Load a downloaded file into PostGIS. Returns rows loaded."""
-    raise NotImplementedError(f"{DATASET}: load not implemented yet (Phase 1)")
+def _row(rec: dict):
+    uprn = get(rec, "uprn")
+    if not uprn or not uprn.isdigit():
+        return None
+    return (int(uprn), get(rec, "property-type", "property_type"), get(rec, "lmk-key", "lmk_key"))
+
+
+def load(path: str, conn, la_code: str) -> int:
+    return load_csv(path, conn, TABLE, COLUMNS, _row)
