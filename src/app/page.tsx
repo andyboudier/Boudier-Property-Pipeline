@@ -72,6 +72,20 @@ export default async function HomePage() {
       ),
     },
     {
+      href: "/freeholds",
+      label: "Unbroken Freeholds",
+      desc: "Whole buildings on one freehold title — find the owners",
+      color: "#4F6D7A",
+      icon: (
+        <Svg>
+          <path d="M3.5 20h17" />
+          <path d="M5.5 20V9l6.5-4.5L18.5 9v11" fill="currentColor" fillOpacity=".12" />
+          <path d="M9 20v-4h6v4" strokeOpacity=".85" />
+          <path d="M9 12h2M13 12h2" strokeOpacity=".85" />
+        </Svg>
+      ),
+    },
+    {
       href: "/contacts",
       label: "Contacts",
       desc: "Architects, agents, accountants & advisors",
