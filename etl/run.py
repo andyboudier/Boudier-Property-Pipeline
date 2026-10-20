@@ -10,17 +10,26 @@ drop them in ./data/<source>/.
 """
 
 import argparse
+from pathlib import Path
+
+from dotenv import load_dotenv
 
 from .db import build_candidates, connect
-from .sources import ccod, epc, inspire, leases, os_uprn, price_paid, voa
+from .sources import ccod, epc, inspire, leases, ocod, os_uprn, price_paid, voa
 from .sources._gate import LicenceNotAccepted
 
 # Order matters: polygons and points first, then the datasets that corroborate
 # UPRNs, because the derivation drops any UPRN nothing else confirms.
-PIPELINE = [inspire, os_uprn, epc, leases, ccod, voa, price_paid]
+PIPELINE = [inspire, os_uprn, epc, leases, ccod, ocod, voa, price_paid]
 
 
 def main() -> int:
+    # Credentials and licence gates live in the app's .env.local, one level up.
+    for env_path in (Path(".env.local"), Path("..") / ".env.local", Path(__file__).parent.parent / ".env.local"):
+        if env_path.exists():
+            load_dotenv(env_path)
+            break
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--la", required=True, help="ONS local authority code, e.g. E06000038 (Reading)")
     ap.add_argument("--dest", default="./data", help="where downloads are cached")

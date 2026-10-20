@@ -7,35 +7,42 @@
     Licence: accepted by Andy at https://use-land-property-data.service.gov.uk/datasets/ccod — see etl/README.md.
 """
 
-from ._csv_source import find_file, get, load_csv
+from pathlib import Path
+
+from ._csv_source import get, load_csv
 from ._gate import require_licence
+from ._hmlr_api import download, latest_file
 
 DATASET = "HMLR CCOD / OCOD"
 LICENCE_ENV = "HMLR_LICENCE_ACCEPTED"
 SOURCE_URL = "https://use-land-property-data.service.gov.uk/datasets/ccod"
+API_DATASET = "ccod"
 TABLE = "stg_ccod"
-COLUMNS = ["uprn", "postcode", "company_name", "company_number", "is_overseas"]
+COLUMNS = ["title_number", "tenure", "property_address", "postcode", "company_name", "company_number", "proprietorship", "country_incorporated", "is_overseas"]
 
 
 def fetch(la_code: str, dest: str) -> str:
-    """Locate the file you downloaded under your own account."""
+    """Download the newest full file through the HMLR API (cached)."""
     require_licence(LICENCE_ENV, DATASET, SOURCE_URL)
-    return find_file(dest, "ccod", DATASET, SOURCE_URL)
+    name = latest_file(API_DATASET)
+    return download(API_DATASET, name, Path(dest) / "ccod")
 
 
 def _row(rec: dict):
-    name = get(rec, "proprietor-name-1", "proprietor_name_1", "proprietor name (1)")
+    name = get(rec, "Proprietor Name (1)")
     if not name:
         return None
-    uprn = get(rec, "uprn")
-    country = (get(rec, "proprietor-1-country-incorporated", "country_incorporated") or "").lower()
-    overseas = bool(country) and "united kingdom" not in country and "england" not in country
+    country = (get(rec, "Country Incorporated (1)") or "").strip()
     return (
-        int(uprn) if uprn and uprn.isdigit() else None,
-        get(rec, "property-address-postcode", "postcode"),
+        get(rec, "Title Number"),
+        get(rec, "Tenure"),
+        get(rec, "Property Address"),
+        get(rec, "Postcode"),
         name,
-        get(rec, "company-registration-no-1", "company_registration_no_1"),
-        overseas,
+        get(rec, "Company Registration No. (1)"),
+        get(rec, "Proprietorship Category (1)"),
+        country or None,
+        bool(country) and country.upper() not in ("UNITED KINGDOM", "ENGLAND", "WALES", "SCOTLAND", "NORTHERN IRELAND"),
     )
 
 

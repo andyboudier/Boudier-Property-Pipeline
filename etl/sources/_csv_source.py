@@ -52,11 +52,16 @@ def load_csv(
     table: str,
     columns: Sequence[str],
     row_fn: Callable[[dict], Sequence | None],
+    truncate_first: bool = True,
 ) -> int:
-    """Truncate the staging table and COPY the mapped rows in."""
+    """Truncate the staging table and COPY the mapped rows in.
+
+    OCOD sets truncate_first=False: it shares stg_ccod with CCOD and appends.
+    """
     from ..db import copy_rows, truncate
 
-    truncate(conn, table)
+    if truncate_first:
+        truncate(conn, table)
 
     def rows():
         for rec in read_rows(path):
@@ -64,4 +69,6 @@ def load_csv(
             if out is not None:
                 yield out
 
-    return copy_rows(conn, table, columns, rows())
+    n = copy_rows(conn, table, columns, rows())
+    conn.commit()
+    return n

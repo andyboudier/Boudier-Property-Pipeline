@@ -7,20 +7,25 @@
     Licence: accepted by Andy at https://use-land-property-data.service.gov.uk/datasets/leases — see etl/README.md.
 """
 
-from ._csv_source import find_file, get, load_csv
+from pathlib import Path
+
+from ._csv_source import get, load_csv
 from ._gate import require_licence
+from ._hmlr_api import download, latest_file
 
 DATASET = "HMLR Registered Leases"
 LICENCE_ENV = "HMLR_LICENCE_ACCEPTED"
 SOURCE_URL = "https://use-land-property-data.service.gov.uk/datasets/leases"
+API_DATASET = "leases"
 TABLE = "stg_lease"
 COLUMNS = ["uprn", "address", "postcode"]
 
 
 def fetch(la_code: str, dest: str) -> str:
-    """Locate the file you downloaded under your own account."""
+    """Download the newest full file through the HMLR API (cached)."""
     require_licence(LICENCE_ENV, DATASET, SOURCE_URL)
-    return find_file(dest, "leases", DATASET, SOURCE_URL)
+    name = latest_file(API_DATASET)
+    return download(API_DATASET, name, Path(dest) / "leases")
 
 
 def _row(rec: dict):

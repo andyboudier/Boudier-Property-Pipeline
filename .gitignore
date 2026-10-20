@@ -14,3 +14,7 @@ serviceAccount.json
 
 # Supabase CLI scratch (version cache, linked-project state)
 supabase/.temp/
+
+# ETL downloads and virtualenv — large, and licensed data stays off the repo
+etl/data/
+etl/.venv/

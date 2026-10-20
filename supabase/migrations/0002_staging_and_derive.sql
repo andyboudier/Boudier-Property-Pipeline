@@ -39,9 +39,12 @@ create index if not exists stg_lease_uprn_idx on stg_lease (uprn);
 -- EPC certificates. Drives F6 and helps F5.
 create table if not exists stg_epc (
   uprn           bigint not null,
+  postcode       text,
+  address        text,
   property_type  text,
   certificate_id text
 );
+create index if not exists stg_epc_postcode_idx on stg_epc (postcode);
 create index if not exists stg_epc_uprn_idx on stg_epc (uprn);
 
 -- VOA non-domestic rating list. Corroborates commercial UPRNs, feeds F5.
@@ -61,14 +64,23 @@ create index if not exists stg_price_paid_uprn_idx on stg_price_paid (uprn);
 
 -- HMLR CCOD/OCOD. Drives owner_type (F4). A polygon with no match is INFERRED
 -- private — recorded as such, never asserted.
+--
+-- The real files carry NO UPRN: they are keyed by title number, with the
+-- property address and postcode. So a polygon is matched to an owner by
+-- postcode (obtained from the EPC records of the UPRNs inside it), which is
+-- the join the plan describes in §4 step 6.
 create table if not exists stg_ccod (
-  uprn           bigint,
+  title_number   text,
+  tenure         text,                      -- Freehold / Leasehold, straight from the file
+  property_address text,
   postcode       text,
   company_name   text,
   company_number text,
+  proprietorship text,
+  country_incorporated text,
   is_overseas    boolean not null default false
 );
-create index if not exists stg_ccod_uprn_idx on stg_ccod (uprn);
+create index if not exists stg_ccod_postcode_idx on stg_ccod (postcode);
 
 -- ── Classification helpers ──────────────────────────────────────────────────
 
@@ -138,9 +150,17 @@ begin
         where e.uprn = any(array_agg(distinct c.uprn))) as epc_types,
       (select array_agg(distinct v.description) from stg_voa v
         where v.uprn = any(array_agg(distinct c.uprn))) as voa_descs,
+      -- Owner by postcode: the polygon's postcodes come from the EPC records
+      -- of the UPRNs inside it. Freehold titles are preferred — a leasehold
+      -- title at the same postcode is a flat within the building, not its owner.
       (select row_to_json(x) from (
         select cc.company_name, cc.company_number, cc.is_overseas
-        from stg_ccod cc where cc.uprn = any(array_agg(distinct c.uprn)) limit 1) x) as owner
+        from stg_ccod cc
+        where cc.postcode in (
+          select distinct e.postcode from stg_epc e
+          where e.uprn = any(array_agg(distinct c.uprn)) and e.postcode is not null)
+        order by (cc.tenure ilike 'freehold') desc nulls last
+        limit 1) x) as owner
     from corroborated c
     group by c.inspire_id, c.la_code
   )

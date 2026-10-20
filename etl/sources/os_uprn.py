@@ -65,7 +65,7 @@ def _open_csv(path: str):
 
 def load(path: str, conn, la_code: str) -> int:
     """Stream the GB file, keep only points inside this authority's bounding
-    box, and COPY those into stg_uprn."""
+    box, and COPY those into stg_uprn as EWKT."""
     from ..db import copy_rows, truncate
     from ..la_bbox import bbox_for
 
@@ -82,16 +82,8 @@ def load(path: str, conn, la_code: str) -> int:
             except (TypeError, ValueError):
                 continue
             if west <= lng <= east and south <= lat <= north:
-                yield (uprn, f"POINT({lng} {lat})")
+                yield (uprn, f"SRID=4326;POINT({lng} {lat})")
 
-    with conn.cursor() as cur:
-        cur.execute("create temp table _u (uprn bigint, wkt text) on commit drop")
-    n = copy_rows(conn, "_u", ["uprn", "wkt"], rows())
-    with conn.cursor() as cur:
-        cur.execute(
-            "insert into stg_uprn (uprn, geom) "
-            "select uprn, st_geomfromtext(wkt, 4326) from _u "
-            "on conflict (uprn) do nothing"
-        )
+    n = copy_rows(conn, "stg_uprn", ["uprn", "geom"], rows())
     conn.commit()
     return n

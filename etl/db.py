@@ -30,7 +30,14 @@ def connect() -> Iterator[psycopg.Connection]:
 
 
 def copy_rows(conn: psycopg.Connection, table: str, columns: Sequence[str], rows: Iterable[Sequence]) -> int:
-    """Bulk-load rows into a staging table. Returns the number written."""
+    """Bulk-load rows into a staging table. Returns the number written.
+
+    Does NOT commit — the caller owns the transaction. Geometry columns are
+    written as EWKT ("SRID=4326;POINT(...)"), which PostGIS parses on input, so
+    no temp table or st_geomfromtext round-trip is needed. That also keeps the
+    whole load inside one transaction, which the Supabase transaction pooler
+    requires: a temp table created in one transaction is gone in the next.
+    """
     n = 0
     cols = ", ".join(columns)
     with conn.cursor() as cur:
@@ -38,15 +45,13 @@ def copy_rows(conn: psycopg.Connection, table: str, columns: Sequence[str], rows
             for row in rows:
                 copy.write_row(row)
                 n += 1
-    conn.commit()
     return n
 
 
 def truncate(conn: psycopg.Connection, table: str) -> None:
-    """Staging tables are rebuilt per run, not appended to."""
+    """Staging tables are rebuilt per run, not appended to. Does not commit."""
     with conn.cursor() as cur:
         cur.execute(f"truncate {table}")
-    conn.commit()
 
 
 def build_candidates(conn: psycopg.Connection, la_code: str) -> int:

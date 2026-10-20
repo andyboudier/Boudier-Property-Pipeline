@@ -14,4 +14,8 @@ dependencies = [
 ]
 
 [tool.uv]
-dev-dependencies = ["pytest>=8", "ruff>=0.6"]
+# A script collection, not an installable package — do not try to build it.
+package = false
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
