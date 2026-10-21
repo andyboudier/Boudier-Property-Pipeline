@@ -14,13 +14,19 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from . import context
 from .db import build_candidates, connect
 from .sources import ccod, epc, inspire, leases, ocod, os_uprn, price_paid, voa
 from .sources._gate import LicenceNotAccepted
 
 # Order matters: polygons and points first, then the datasets that corroborate
 # UPRNs, because the derivation drops any UPRN nothing else confirms.
+# Order matters: polygons and points first; EPC next because it sets the
+# postcode scope the national files are filtered by; then owners and leases.
 PIPELINE = [inspire, os_uprn, epc, leases, ccod, ocod, voa, price_paid]
+# Corroborating-only sources that may not be available yet. Missing is a
+# warning, not a stop — the build runs without them.
+OPTIONAL = {voa, price_paid}
 
 
 def main() -> int:
@@ -45,11 +51,11 @@ def main() -> int:
                 print(f"  ready    {mod.DATASET}\n           {path}")
             except LicenceNotAccepted:
                 print(f"  LICENCE  {mod.DATASET} — set {mod.LICENCE_ENV}=1 once accepted")
-                ready = False
+                ready = ready and mod in OPTIONAL
             except FileNotFoundError as e:
-                print(f"  MISSING  {mod.DATASET}")
+                print(f"  MISSING  {mod.DATASET}{'  (optional)' if mod in OPTIONAL else ''}")
                 print(f"           {str(e).splitlines()[1].strip()}")
-                ready = False
+                ready = ready and mod in OPTIONAL
         print("\nAll sources ready." if ready else "\nNot ready — see above.")
         return 0 if ready else 1
 
@@ -58,14 +64,19 @@ def main() -> int:
         for mod in PIPELINE:
             try:
                 path = mod.fetch(args.la, args.dest)
-            except LicenceNotAccepted as e:
-                print(f"STOPPED — {e}")
-                return 1
-            except FileNotFoundError as e:
+            except (LicenceNotAccepted, FileNotFoundError) as e:
+                if mod in OPTIONAL:
+                    print(f"  skipped           {mod.DATASET} — {str(e).splitlines()[0]}")
+                    continue
                 print(f"STOPPED — {e}")
                 return 1
             n = mod.load(path, conn, args.la)
             print(f"  loaded {n:>9,}  {mod.DATASET}")
+            if mod is epc:
+                with conn.cursor() as cur:
+                    cur.execute("select distinct split_part(upper(postcode), ' ', 1) from stg_epc where postcode like '% %'")
+                    context.OUTCODES = {r[0] for r in cur.fetchall()}
+                print(f"  scope: {len(context.OUTCODES)} postcode districts — {', '.join(sorted(context.OUTCODES))}")
 
         print("\n  deriving candidates…")
         made = build_candidates(conn, args.la)

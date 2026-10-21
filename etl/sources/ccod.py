@@ -11,6 +11,7 @@ from pathlib import Path
 
 from ._csv_source import get, load_csv
 from ._gate import require_licence
+from ..context import in_scope
 from ._hmlr_api import download, latest_file
 
 DATASET = "HMLR CCOD / OCOD"
@@ -29,6 +30,8 @@ def fetch(la_code: str, dest: str) -> str:
 
 
 def _row(rec: dict):
+    if not in_scope(get(rec, "Postcode")):
+        return None
     name = get(rec, "Proprietor Name (1)")
     if not name:
         return None

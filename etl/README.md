@@ -12,16 +12,26 @@ uv run python -m etl.run --la E06000038           # build Reading
 Needs `SUPABASE_DB_URL` (Supabase → Project Settings → Database → Connection
 string → URI). Use the pooled connection on port 6543 for bulk loads.
 
-## What downloads itself, and what does not
+## What downloads itself
 
-Only **OS Open UPRN** can be fetched automatically — the OS Data Hub downloads
-API serves Open Data anonymously (verified: 619 MB GB-wide CSV).
+Everything, now. The last manual step — HMLR's INSPIRE polygons, which sit
+behind a signed-in website with no API — is gone: MHCLG republishes the same
+polygons as the open **`title-boundary`** dataset on planning.data.gov.uk
+(22.8 million entities, OGL v3, HMLR attribution). `inspire.py` tiles the
+authority's bounding box (from the `local-authority-district` dataset, keyed
+by ONS code) into ~2 km cells and pages each at 500 a time. Reading: 81,941
+freehold polygons in about nine minutes, cached for 30 days.
 
-Everything else sits behind a signed-in session. An anonymous request to the
-HMLR INSPIRE dataset just bounces between `/datasets/inspire` and
-`/datasets/inspire/download`. So you download those under your own account and
-drop them in `./data/<source>/` — which is what the licence terms imply anyway.
-`--check` tells you exactly which files are missing and where to put them.
+The GML-zip route is kept as `load_gml` for anyone holding a file from the
+HMLR site, but nothing requires it.
+
+CCOD, OCOD and Registered Leases are national files (1.6 GB and 2.2 GB) with
+no authority column, so after EPC has loaded, `run.py` records the postcode
+districts seen in that authority's certificates and those loaders keep only
+rows in them (`etl/context.py`).
+
+VOA and Price Paid are corroborating-only and optional: if a file is missing
+the build warns and continues.
 
 ## Licences — read before running
 
@@ -32,7 +42,7 @@ happen by accident. See plan §1 and §8.
 
 | Module | Dataset | Key needed | Licence gate |
 |---|---|---|---|
-| `sources/inspire.py` | HMLR INSPIRE Index Polygons (freehold boundaries) | none | `INSPIRE_LICENCE_ACCEPTED` |
+| `sources/inspire.py` | HMLR INSPIRE Index Polygons — **automatic, via planning.data.gov.uk `title-boundary`** | none | none (OGL v3) |
 | `sources/os_uprn.py` | OS Open UPRN | OS Data Hub key | `OS_LICENCE_ACCEPTED` |
 | `sources/leases.py` | HMLR Registered Leases | none (licence choice) | `HMLR_LICENCE_ACCEPTED` |
 | `sources/ccod.py` | HMLR CCOD / OCOD (company + overseas owners) | account | `HMLR_LICENCE_ACCEPTED` |
