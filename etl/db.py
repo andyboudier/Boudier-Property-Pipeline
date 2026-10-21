@@ -5,6 +5,7 @@ row-by-row inserts would take hours.
 """
 
 import os
+import re
 from contextlib import contextmanager
 from typing import Iterable, Iterator, Sequence
 
@@ -12,20 +13,30 @@ import psycopg
 
 
 def dsn() -> str:
-    """Supabase → Project Settings → Database → Connection string (URI)."""
+    """Supabase → Project Settings → Database → Connection string (URI).
+
+    The ETL always uses the SESSION pooler (port 5432), whatever port the URL
+    names. On the transaction pooler (6543) Slough's derivation — a 44-second
+    statement — completed on the server, but the result never reached the
+    client, which then waited forever on an open socket. The session pooler is
+    built for long statements and multi-statement transactions; the app's
+    short queries don't touch this code, so they can stay on 6543.
+    """
     url = os.environ.get("SUPABASE_DB_URL")
     if not url:
         raise RuntimeError(
             "SUPABASE_DB_URL is not set.\n"
-            "  Supabase → Project Settings → Database → Connection string → URI.\n"
-            "  Use the pooled connection on port 6543 for bulk loads."
+            "  Supabase → Project Settings → Database → Connection string → URI."
         )
-    return url
+    return re.sub(r"(\.pooler\.supabase\.com):6543/", r"\1:5432/", url)
 
 
 @contextmanager
 def connect() -> Iterator[psycopg.Connection]:
-    with psycopg.connect(dsn()) as conn:
+    # TCP keepalives: if the connection dies mid-build, find out within about
+    # a minute instead of waiting on a dead socket indefinitely.
+    with psycopg.connect(dsn(), connect_timeout=30, keepalives=1, keepalives_idle=30,
+                         keepalives_interval=10, keepalives_count=5) as conn:
         yield conn
 
 
