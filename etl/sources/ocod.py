@@ -12,7 +12,7 @@ from pathlib import Path
 
 from ._csv_source import get, load_csv
 from ._gate import require_licence
-from ..context import in_scope
+from ._titles import address_keys, in_scope_title
 from ._hmlr_api import download, latest_file
 
 DATASET = "HMLR OCOD (overseas owners)"
@@ -20,7 +20,7 @@ LICENCE_ENV = "HMLR_LICENCE_ACCEPTED"
 SOURCE_URL = "https://use-land-property-data.service.gov.uk/datasets/ocod"
 API_DATASET = "ocod"
 TABLE = "stg_ccod"
-COLUMNS = ["title_number", "tenure", "property_address", "postcode", "company_name", "company_number", "proprietorship", "country_incorporated", "is_overseas", "proprietor_address", "price_paid", "date_added"]
+COLUMNS = ["title_number", "tenure", "property_address", "postcode", "company_name", "company_number", "proprietorship", "country_incorporated", "is_overseas", "proprietor_address", "price_paid", "date_added", "address_keys"]
 
 
 def fetch(la_code: str, dest: str) -> str:
@@ -45,7 +45,7 @@ def _price(rec: dict):
 
 
 def _row(rec: dict):
-    if not in_scope(get(rec, "Postcode")):
+    if not in_scope_title(get(rec, "Postcode"), get(rec, "Property Address")):
         return None
     name = get(rec, "Proprietor Name (1)")
     if not name:
@@ -62,6 +62,7 @@ def _row(rec: dict):
         True,  # every OCOD proprietor is overseas
         _prop_addr(rec),
         *_price(rec),
+        address_keys(get(rec, "Property Address")),
     )
 
 

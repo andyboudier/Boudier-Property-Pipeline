@@ -10,6 +10,11 @@ the derivation joins on full postcode later.
 
 OUTCODES: set[str] | None = None
 
+# The council's post towns, normalised ("reading", "newbury"), from its EPCs.
+# Keeps CCOD/OCOD titles that have no postcode — common for council and
+# housing association estates — when one names a town in scope.
+TOWNS: set[str] | None = None
+
 
 def outcode(postcode: str | None) -> str | None:
     if not postcode:

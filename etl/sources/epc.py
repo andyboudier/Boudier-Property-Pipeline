@@ -181,7 +181,7 @@ def load(path: str, conn, la_code: str) -> int:
     return n
 
 
-BAND_COLUMNS = ["uprn", "la_code", "postcode", "address", "band", "lodged", "kind"]
+BAND_COLUMNS = ["uprn", "la_code", "postcode", "address", "band", "lodged", "kind", "post_town"]
 
 
 def _band(rec: dict) -> str | None:
@@ -209,7 +209,13 @@ def load_latest(path: str, conn, la_code: str) -> int:
     def rows():
         for uprn, rec in latest.items():
             address = ", ".join(str(rec[k]).strip() for k in ("addressLine1", "addressLine2", "addressLine3", "addressLine4") if rec.get(k))
-            yield (uprn, la_code, rec.get("postcode"), address, _band(rec), (rec.get("registrationDate") or "")[:10] or None, rec.get("_kind"))
+            town = re.sub(r"[^a-z0-9]+", " ", str(rec.get("postTown") or "").lower()).strip() or None
+            yield (uprn, la_code, rec.get("postcode"), address, _band(rec), (rec.get("registrationDate") or "")[:10] or None, rec.get("_kind"), town)
+
+    from .. import context
+
+    towns = {re.sub(r"[^a-z0-9]+", " ", str(r.get("postTown") or "").lower()).strip() for r in latest.values()}
+    context.TOWNS = {t for t in towns if t}
 
     with conn.cursor() as cur:
         # A UPRN on a council boundary can be certified under either council;
