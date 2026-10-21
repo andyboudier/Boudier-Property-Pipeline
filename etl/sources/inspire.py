@@ -56,14 +56,23 @@ def _bbox_from_wkt(wkt: str) -> tuple[float, float, float, float]:
     return min(xs), min(ys), max(xs), max(ys)
 
 
-def la_bbox(client: httpx.Client, la_code: str) -> tuple[float, float, float, float]:
-    """The authority's extent from its official boundary, falling back to the
-    hand-maintained table in la_bbox.py if the service has no match."""
+def la_boundary(client: httpx.Client, la_code: str) -> str | None:
+    """The authority's official boundary (WGS84 WKT), from the
+    local-authority-district dataset keyed by ONS code."""
     r = client.get(f"{PDG}/entity.json", params={"dataset": "local-authority-district", "reference": la_code})
     if r.status_code == 200:
         ents = r.json().get("entities") or []
         if ents and ents[0].get("geometry"):
-            return _bbox_from_wkt(ents[0]["geometry"])
+            return ents[0]["geometry"]
+    return None
+
+
+def la_bbox(client: httpx.Client, la_code: str) -> tuple[float, float, float, float]:
+    """The authority's extent, falling back to the hand-maintained table in
+    la_bbox.py if the service has no boundary for it."""
+    wkt = la_boundary(client, la_code)
+    if wkt:
+        return _bbox_from_wkt(wkt)
     from ..la_bbox import bbox_for
 
     return bbox_for(la_code)
@@ -121,7 +130,17 @@ def fetch(la_code: str, dest: str) -> str:
     seen: set[str] = set()
     tmp = target.with_suffix(".jsonl.part")
     with httpx.Client(headers={"User-Agent": UA, "Accept": "application/json"}, timeout=60.0, follow_redirects=True) as client:
-        west, south, east, north = la_bbox(client, la_code)
+        # The bbox over-fetches into neighbouring authorities. Keep a polygon
+        # only if its representative point falls inside this authority's real
+        # boundary — otherwise neighbours get mis-tagged, and once several
+        # authorities are loaded the same building appears under two of them.
+        from shapely import wkt as shp_wkt
+        from shapely.prepared import prep
+
+        boundary_wkt = la_boundary(client, la_code)
+        inside = prep(shp_wkt.loads(boundary_wkt)) if boundary_wkt else None
+        west, south, east, north = (_bbox_from_wkt(boundary_wkt) if boundary_wkt else la_bbox(client, la_code))
+        kept_out = 0
         cells = [(x, y) for x in _steps(west, east, tile) for y in _steps(south, north, tile)]
         with open(tmp, "w", encoding="utf-8") as out:
             for i, (x, y) in enumerate(cells, 1):
@@ -136,13 +155,20 @@ def fetch(la_code: str, dest: str) -> str:
                         geom = e.get("geometry")
                         if ref and geom and ref not in seen:
                             seen.add(ref)
+                            if inside is not None:
+                                try:
+                                    if not inside.contains(shp_wkt.loads(geom).representative_point()):
+                                        kept_out += 1
+                                        continue
+                                except Exception:
+                                    pass  # unparseable geometry: keep it rather than lose it silently
                             out.write(json.dumps({"reference": ref, "geometry": geom, "entry_date": e.get("entry-date")}) + "\n")
                     # links.next is issued as http://, which CloudFront 301s to https://.
                     url = (body.get("links") or {}).get("next")
                     if url and url.startswith("http://"):
                         url = "https://" + url[len("http://"):]
                     time.sleep(0.15)
-                print(f"\r  INSPIRE {la_code}: cell {i}/{len(cells)} ({len(seen):,} polygons)", end="", flush=True)
+                print(f"\r  INSPIRE {la_code}: cell {i}/{len(cells)} ({len(seen) - kept_out:,} inside, {kept_out:,} outside)", end="", flush=True)
         print()
     tmp.replace(target)
     return str(target)

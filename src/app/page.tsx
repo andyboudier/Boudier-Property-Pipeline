@@ -33,7 +33,7 @@ export default async function HomePage() {
       label: "Pipeline",
       desc: "Site appraisals — DCAS, MAC & IPAD",
       color: "#2E7D5B",
-      count: `${properties.length} sites`,
+      count: `${properties.filter((p) => p.pipeline !== "title-split").length} sites`,
       icon: (
         <Svg>
           <path d="M4 4v16h16" />
@@ -68,6 +68,19 @@ export default async function HomePage() {
           <path d="M4 10.5 12 4l8 6.5" />
           <path d="M6 10v9.5h12V10" fill="currentColor" fillOpacity=".12" />
           <path d="M10 19.5V14h4v5.5" strokeOpacity=".85" />
+        </Svg>
+      ),
+    },
+    {
+      href: "/title-split",
+      label: "Title Split Pipeline",
+      desc: "Unbroken freeholds being bought to split into units",
+      color: "#1F3A5F",
+      count: `${properties.filter((p) => p.pipeline === "title-split" && p.titleSplit?.stage !== "dead").length} live`,
+      icon: (
+        <Svg>
+          <rect x="4.5" y="4" width="15" height="16" rx="1.5" fill="currentColor" fillOpacity=".12" />
+          <path d="M12 4v16M4.5 12h15" strokeOpacity=".85" />
         </Svg>
       ),
     },

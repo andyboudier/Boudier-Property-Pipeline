@@ -29,7 +29,7 @@ import {
   updateContact,
   deleteContact,
 } from "@/lib/db";
-import type { MonitorCriteria, Contact } from "@/lib/types";
+import type { MonitorCriteria, Contact, TitleSplitStage } from "@/lib/types";
 import { classifyKind } from "@/lib/prospectKind";
 
 export async function actionSaveDcas(id: string, dcas: Dcas) {
@@ -542,6 +542,25 @@ export async function actionAddFreeholdToPipeline(candidateId: number) {
     listingUrl: titleBoundaryUrl(c.inspireId),
     notes,
     dcas: emptyDcas(`Unbroken freehold — ${c.addressCount} units on one title`, name, new Date().toISOString().slice(0, 10)),
+    // Its own pipeline: a title split is not a site appraisal.
+    pipeline: "title-split",
+    titleSplit: {
+      stage: "identified",
+      candidateId: c.id,
+      inspireId: c.inspireId,
+      laCode: c.laCode,
+      addressCount: c.addressCount,
+      leaseCount: c.leaseCount,
+      epcUprnCount: c.epcUprnCount,
+      ownerType: c.ownerType,
+      ownerTypeInferred: c.ownerTypeInferred,
+      companyName: c.companyName,
+      companyNumber: c.companyNumber,
+      companyAddress: c.companyAddress,
+      confidence: c.confidence,
+      sampleAddresses: c.sampleAddresses,
+      stageUpdatedAt: new Date().toISOString(),
+    },
   });
   try {
     const { createSiteFolders } = await import("@/lib/onedrive");
@@ -552,6 +571,25 @@ export async function actionAddFreeholdToPipeline(candidateId: number) {
   }
   await markInPipeline(candidateId, propertyId);
   revalidatePath("/freeholds");
-  revalidatePath("/pipeline");
+  revalidatePath("/title-split");
   return { ok: true as const, propertyId, already: false };
+}
+
+/** Move a Title Split opportunity to another stage. */
+export async function actionSetTitleSplitStage(propertyId: string, stage: TitleSplitStage) {
+  const p = await getProperty(propertyId);
+  if (!p?.titleSplit) return { ok: false as const, error: "Not a Title Split opportunity." };
+  const now = new Date().toISOString();
+  await updateProperty(propertyId, {
+    titleSplit: {
+      ...p.titleSplit,
+      stage,
+      stageUpdatedAt: now,
+      // Record the first time a letter went, so follow-ups can be timed from it.
+      letterSentAt: stage === "letter-sent" && !p.titleSplit.letterSentAt ? now : p.titleSplit.letterSentAt,
+    },
+  });
+  revalidatePath("/title-split");
+  revalidatePath(`/property/${propertyId}`);
+  return { ok: true as const };
 }

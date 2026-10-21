@@ -11,7 +11,8 @@ export const dynamic = "force-dynamic";
 export default async function PipelinePage() {
   const [properties, settings] = await Promise.all([listProperties(), getSettings()]);
 
-  const rows: Row[] = properties.map((p) => {
+  // Title Split opportunities have their own pipeline (/title-split).
+  const rows: Row[] = properties.filter((p) => p.pipeline !== "title-split").map((p) => {
     const result = evaluateProcedability(p, settings);
     const d = dcasStats(p.dcas);
     const ipadOut = p.ipad?.inputs.units.length ? computeIpad(p.ipad.inputs) : null;

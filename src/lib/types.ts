@@ -222,6 +222,40 @@ export interface ProcedabilityResult {
 }
 
 // ── Property (top-level doc) ─────────────────────────────────────────────────
+// ── Title Split pipeline ────────────────────────────────────────────────────
+// Opportunities from the Unbroken Freehold Finder: buy a whole freehold held
+// on one title, split it into individual leasehold units, sell them. A
+// different workflow from a site appraisal, so it has its own stages.
+export type TitleSplitStage =
+  | "identified" // on the list, nothing done yet
+  | "researching" // confirming owner / title register bought
+  | "letter-sent"
+  | "in-contact"
+  | "negotiating"
+  | "under-offer"
+  | "acquired"
+  | "split" // title split complete, units being sold
+  | "dead";
+
+export interface TitleSplit {
+  stage: TitleSplitStage;
+  candidateId: number; // freehold_candidates.id in Supabase
+  inspireId: string;
+  laCode: string;
+  addressCount: number;
+  leaseCount: number;
+  epcUprnCount: number;
+  ownerType: string;
+  ownerTypeInferred: boolean;
+  companyName?: string | null;
+  companyNumber?: string | null;
+  companyAddress?: string | null; // where to write
+  confidence: number;
+  sampleAddresses?: string[];
+  letterSentAt?: string;
+  stageUpdatedAt?: string;
+}
+
 export interface Property {
   id: string;
   // Pipeline-sourced (also auto-populates DCAS / IPAD)
@@ -259,6 +293,10 @@ export interface Property {
   ipad?: Ipad;
   investor?: InvestorTerms;
 
+  // Which pipeline the property belongs to. Absent = the main acquisition
+  // pipeline, so every property created before this existed stays there.
+  pipeline?: "main" | "title-split";
+  titleSplit?: TitleSplit;
   createdAt?: string;
   updatedAt?: string;
 }

@@ -1,0 +1,59 @@
+# Monthly refresh of the Unbroken Freehold Finder (plan §7, Phase 3).
+#
+# Every source re-downloads itself: INSPIRE via planning.data.gov.uk, OS Open
+# UPRN, EPC via its API, CCOD/OCOD/Leases via the HMLR API. Runs on the 2nd so
+# the sources' own 1st-of-month refreshes have landed. Also runnable by hand
+# from the Actions tab (workflow_dispatch) — do that once to prove it.
+#
+# Needs three repository secrets (Settings → Secrets and variables → Actions):
+#   SUPABASE_DB_URL   EPC_API_KEY   HMLR_API_KEY
+# This repo is public: secrets are masked in logs and never exposed to forks,
+# and the ETL prints counts, not records — licensed data stays in the runner.
+
+name: Freehold refresh
+
+on:
+  schedule:
+    - cron: "0 3 2 * *"
+  workflow_dispatch:
+    inputs:
+      authorities:
+        description: "ONS codes, space-separated (blank = all release-1)"
+        required: false
+        default: ""
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      EPC_API_KEY: ${{ secrets.EPC_API_KEY }}
+      HMLR_API_KEY: ${{ secrets.HMLR_API_KEY }}
+      # Licence gates: accepted by Andy under his own accounts (plan §1).
+      HMLR_LICENCE_ACCEPTED: "1"
+      OS_LICENCE_ACCEPTED: "1"
+      EPC_LICENCE_ACCEPTED: "1"
+      # Fresh data every month — never reuse a cache.
+      INSPIRE_MAX_AGE_DAYS: "0"
+      EPC_MAX_AGE_DAYS: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Check secrets
+        run: |
+          for v in SUPABASE_DB_URL EPC_API_KEY HMLR_API_KEY; do
+            [ -n "${!v}" ] || { echo "::error::Repository secret $v is not set"; exit 1; }
+          done
+      - name: Install
+        working-directory: etl
+        run: uv sync
+      - name: Build each authority
+        run: |
+          LAS="${{ github.event.inputs.authorities }}"
+          [ -n "$LAS" ] || LAS="E06000038 E06000037 E06000041 E06000036 E06000040 E06000039"
+          for la in $LAS; do
+            echo "::group::$la"
+            uv run --project etl python -m etl.run --la "$la" --dest etl/data
+            echo "::endgroup::"
+          done

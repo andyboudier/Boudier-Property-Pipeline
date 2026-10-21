@@ -55,8 +55,18 @@ def truncate(conn: psycopg.Connection, table: str) -> None:
 
 
 def build_candidates(conn: psycopg.Connection, la_code: str) -> int:
-    """Run the SQL derivation (plan §4) for one local authority."""
+    """Run the SQL derivation (plan §4) for one local authority.
+
+    First resolves UPRN-less leases by address (migration 0008), then clears
+    this authority's previous candidates so a polygon that no longer qualifies
+    — or was mis-tagged by an earlier bounding-box pull — does not linger. Rows
+    already promoted to the Title Split pipeline are kept, so their links hold.
+    """
     with conn.cursor() as cur:
+        cur.execute("select resolve_lease_uprns()")
+        resolved = cur.fetchone()[0]
+        print(f"  resolved {resolved:,} UPRN-less leases by address")
+        cur.execute("delete from freehold_candidates where la_code = %s and pipeline_property_id is null", (la_code,))
         cur.execute("select build_freehold_candidates(%s)", (la_code,))
         row = cur.fetchone()
     conn.commit()

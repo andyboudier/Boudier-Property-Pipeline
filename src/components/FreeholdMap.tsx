@@ -155,6 +155,67 @@ function Polygons({ features, selectedId, onSelect }: { features: Feature[]; sel
   return null;
 }
 
+// ── Constraint overlays (plan §6) ───────────────────────────────────────────
+
+const OVERLAYS: { key: string; label: string; stroke: string; fill: string }[] = [
+  { key: "conservation-area", label: "Conservation areas", stroke: "#7A3E9D", fill: "#7A3E9D" },
+  { key: "article-4-direction-area", label: "Article 4", stroke: "#B23A48", fill: "#B23A48" },
+  { key: "listed-building-outline", label: "Listed buildings", stroke: "#C2872B", fill: "#C2872B" },
+  { key: "flood-risk-zone", label: "Flood zones", stroke: "#2A6FB0", fill: "#2A6FB0" },
+];
+
+/**
+ * One Data layer per enabled overlay, refetched for the viewport whenever the
+ * map settles. Non-clickable, so a click always reaches the building beneath.
+ */
+function Overlays({ enabled, onStatus }: { enabled: string[]; onStatus: (msg: string | null) => void }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!map || enabled.length === 0) {
+      onStatus(null);
+      return;
+    }
+    const layers = enabled.map((key) => {
+      const def = OVERLAYS.find((o) => o.key === key)!;
+      const layer = new google.maps.Data({ map });
+      layer.setStyle({ strokeColor: def.stroke, strokeWeight: 1.5, fillColor: def.fill, fillOpacity: 0.12, clickable: false, zIndex: 0 });
+      return { key, layer };
+    });
+    let ctrl: AbortController | null = null;
+    const load = async () => {
+      const b = map.getBounds();
+      if (!b) return;
+      const sw = b.getSouthWest(), ne = b.getNorthEast();
+      const bbox = [sw.lng(), sw.lat(), ne.lng(), ne.lat()].map((n) => n.toFixed(5)).join(",");
+      ctrl?.abort();
+      ctrl = new AbortController();
+      const signal = ctrl.signal;
+      let zoomIn = false;
+      await Promise.all(
+        layers.map(async ({ key, layer }) => {
+          try {
+            const r = await fetch(`/api/freeholds/overlays?dataset=${key}&bbox=${bbox}`, { signal });
+            const j = await r.json();
+            if (signal.aborted) return;
+            layer.forEach((f) => layer.remove(f));
+            if (j.reason) zoomIn = true;
+            if (j.features?.length) layer.addGeoJson(j);
+          } catch { /* aborted or offline */ }
+        }),
+      );
+      if (!signal.aborted) onStatus(zoomIn ? "Zoom in to load the overlays" : null);
+    };
+    const idle = map.addListener("idle", load);
+    load();
+    return () => {
+      ctrl?.abort();
+      google.maps.event.removeListener(idle);
+      layers.forEach(({ layer }) => layer.setMap(null));
+    };
+  }, [map, enabled, onStatus]);
+  return null;
+}
+
 // ── Side card ────────────────────────────────────────────────────────────────
 
 function SideCard({ c, onClose, onAdded }: { c: FreeholdCandidate; onClose: () => void; onAdded: (id: number, propertyId: string) => void }) {
@@ -229,10 +290,10 @@ function SideCard({ c, onClose, onAdded }: { c: FreeholdCandidate; onClose: () =
 
       <div className="mt-auto pt-4">
         {c.pipelinePropertyId ? (
-          <Link href={`/property/${c.pipelinePropertyId}`} className="btn-primary block text-center">In pipeline — open ↗</Link>
+          <Link href={`/property/${c.pipelinePropertyId}`} className="btn-primary block text-center">In Title Split — open ↗</Link>
         ) : (
           <button onClick={add} disabled={pending} className="btn-primary w-full disabled:opacity-60">
-            {pending ? "Adding…" : "Add to Pipeline"}
+            {pending ? "Adding…" : "Add to Title Split"}
           </button>
         )}
         {err && <p className="mt-1 text-xs text-status-stop">{err}</p>}
@@ -330,6 +391,8 @@ export function FreeholdMap({ apiKey, configured }: { apiKey: string; configured
   const [loading, setLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [saved, setSaved] = useState(false);
+  const [overlays, setOverlays] = useState<string[]>([]);
+  const [overlayMsg, setOverlayMsg] = useState<string | null>(null);
   const set = useCallback((p: Partial<Filters>) => {
     setF((s) => ({ ...s, ...p }));
     setSaved(false);
@@ -402,9 +465,27 @@ export function FreeholdMap({ apiKey, configured }: { apiKey: string; configured
         {apiKey ? (
           <APIProvider apiKey={apiKey}>
             <div className="flex items-center gap-2"><PlaceSearch /></div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="label mb-0">Overlays</span>
+              {OVERLAYS.map((o) => {
+                const on = overlays.includes(o.key);
+                return (
+                  <button
+                    key={o.key}
+                    onClick={() => setOverlays((cur) => (on ? cur.filter((k) => k !== o.key) : [...cur, o.key]))}
+                    className="rounded-full border px-2.5 py-1 text-xs font-medium transition"
+                    style={on ? { borderColor: o.stroke, background: o.stroke, color: "#fff" } : { borderColor: o.stroke, color: o.stroke }}
+                  >
+                    {o.label}
+                  </button>
+                );
+              })}
+              {overlayMsg && <span className="text-[11px] text-ink-muted">{overlayMsg}</span>}
+            </div>
             <div className="grid gap-3 lg:grid-cols-[1fr,320px]">
               <div className="card overflow-hidden" style={{ height: 560 }}>
                 <GoogleMap key={la.code} defaultCenter={{ lat: la.lat, lng: la.lng }} defaultZoom={13} mapTypeId="hybrid" gestureHandling="greedy" streetViewControl mapTypeControl style={{ width: "100%", height: "100%" }}>
+                  <Overlays enabled={overlays} onStatus={setOverlayMsg} />
                   <Polygons features={features} selectedId={selectedId} onSelect={setSelectedId} />
                 </GoogleMap>
               </div>
@@ -414,7 +495,7 @@ export function FreeholdMap({ apiKey, configured }: { apiKey: string; configured
               <span className="mr-2 inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "#2E7D5B" }} /> high confidence
               <span className="ml-3 mr-2 inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "#C2872B" }} /> medium
               <span className="ml-3 mr-2 inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "#8A8A8A" }} /> low
-              <span className="ml-3 mr-2 inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "#1F3A5F" }} /> in pipeline
+              <span className="ml-3 mr-2 inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "#1F3A5F" }} /> in Title Split
             </p>
           </APIProvider>
         ) : (
