@@ -57,9 +57,9 @@ def _open_csv(path: str):
             for name in zf.namelist():
                 if name.lower().endswith(".csv"):
                     with zf.open(name) as fh:
-                        yield from csv.DictReader(io.TextIOWrapper(fh, "utf-8"))
+                        yield from csv.DictReader(io.TextIOWrapper(fh, "utf-8-sig"))
     else:
-        with open(path, newline="", encoding="utf-8") as fh:
+        with open(path, newline="", encoding="utf-8-sig") as fh:
             yield from csv.DictReader(fh)
 
 

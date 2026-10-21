@@ -32,9 +32,9 @@ def read_rows(path: str) -> Iterator[dict]:
             for name in zf.namelist():
                 if name.lower().endswith(".csv"):
                     with zf.open(name) as fh:
-                        yield from csv.DictReader(io.TextIOWrapper(fh, "utf-8", errors="replace"))
+                        yield from csv.DictReader(io.TextIOWrapper(fh, "utf-8-sig", errors="replace"))
     else:
-        with open(path, newline="", encoding="utf-8", errors="replace") as fh:
+        with open(path, newline="", encoding="utf-8-sig", errors="replace") as fh:
             yield from csv.DictReader(fh)
 
 
