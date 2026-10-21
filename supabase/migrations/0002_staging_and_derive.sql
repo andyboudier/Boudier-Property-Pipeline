@@ -132,7 +132,6 @@ begin
        or exists (select 1 from stg_price_paid p where p.uprn = i.uprn)
        or exists (select 1 from stg_lease      l where l.uprn = i.uprn)
        or exists (select 1 from stg_voa        v where v.uprn = i.uprn)
-       or exists (select 1 from stg_ccod       c where c.uprn = i.uprn)
   ),
   agg as (
     select
