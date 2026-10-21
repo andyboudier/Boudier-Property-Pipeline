@@ -489,3 +489,69 @@ export async function actionSetLeadKind(id: string, kind: "commercial" | "reside
   revalidateProspects();
   return { ok: true as const };
 }
+
+// ── Unbroken Freehold Finder ─────────────────────────────────────────────────
+
+/**
+ * Promote a freehold candidate to the pipeline (plan §6 "Add to Pipeline").
+ * Creates the same kind of property record as promoting a prospect, with a
+ * DCAS draft seeded from what the finder knows, then records the link on the
+ * candidate so the map shows it as already in the pipeline.
+ */
+export async function actionAddFreeholdToPipeline(candidateId: number) {
+  const { getFreehold, markInPipeline, titleBoundaryUrl, LA_NAMES } = await import("@/lib/freeholds");
+  const { emptyDcas } = await import("@/lib/dcasSchema");
+  const c = await getFreehold(candidateId);
+  if (!c) return { ok: false as const, error: "Candidate not found." };
+  if (c.pipelinePropertyId) return { ok: true as const, propertyId: c.pipelinePropertyId, already: true };
+
+  const la = LA_NAMES[c.laCode] ?? { town: "", lpa: "" };
+  const name = c.sampleAddresses[0] || `Freehold ${c.inspireId}`;
+  const owner =
+    c.ownerType === "private"
+      ? `Private owner${c.ownerTypeInferred ? " (inferred — no company match; confirm via title register)" : ""}`
+      : `${c.ownerType === "overseas" ? "Overseas company" : "Company"}: ${c.companyName ?? "unknown"}` +
+        (c.companyNumber ? ` (${c.companyNumber})` : "") +
+        (c.companyAddress ? `\nWrite to: ${c.companyAddress}` : "");
+  const notes = [
+    `Unbroken freehold candidate — ${c.addressCount} addresses, ${c.leaseCount} registered leases, ${c.epcUprnCount} UPRNs with an EPC (${c.epcCertCount} certificates).`,
+    `Use classes: ${c.useClasses.join(", ") || "not identified"}. Confidence ${Math.round(c.confidence * 100)}%.`,
+    owner,
+    c.sampleAddresses.length ? `Addresses: ${c.sampleAddresses.join("; ")}` : "",
+    c.lastSalePrice ? `Last sale: £${c.lastSalePrice.toLocaleString("en-GB")} on ${c.lastSaleDate ?? "?"}` : "",
+    `INSPIRE ${c.inspireId} — ${titleBoundaryUrl(c.inspireId)}`,
+    "Counts are Phase 1 spatial-join proxies (see docs/unbroken-freehold-finder-PLAN.md §4); confirm against the title register before relying on them.",
+  ].filter(Boolean).join("\n");
+
+  const propertyId = await createProperty({
+    name,
+    town: la.town,
+    lpa: la.lpa,
+    guidePrice: null,
+    sizeSqFt: null,
+    pricePerSqFt: null,
+    currentUse: c.useClasses.length ? `Residential — ${c.useClasses.join("/")} (${c.addressCount} units)` : "",
+    heritage: "",
+    pdRoute: "",
+    fullPlanningRoute: "",
+    keyConstraints: "",
+    planningPrinciple: "",
+    likelyOutcome: "",
+    priorityNextStep: c.ownerType === "private" ? "Buy title register to confirm owner; prepare approach letter" : "Prepare approach letter to company address",
+    listingSource: "Unbroken Freehold Finder",
+    listingUrl: titleBoundaryUrl(c.inspireId),
+    notes,
+    dcas: emptyDcas(`Unbroken freehold — ${c.addressCount} units on one title`, name, new Date().toISOString().slice(0, 10)),
+  });
+  try {
+    const { createSiteFolders } = await import("@/lib/onedrive");
+    const url = await createSiteFolders(name);
+    if (url) await updateProperty(propertyId, { documentsUrl: url });
+  } catch (e) {
+    console.error("OneDrive folder creation failed:", e);
+  }
+  await markInPipeline(candidateId, propertyId);
+  revalidatePath("/freeholds");
+  revalidatePath("/pipeline");
+  return { ok: true as const, propertyId, already: false };
+}
