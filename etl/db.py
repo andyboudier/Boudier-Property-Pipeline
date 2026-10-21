@@ -37,6 +37,10 @@ def connect() -> Iterator[psycopg.Connection]:
     # a minute instead of waiting on a dead socket indefinitely.
     with psycopg.connect(dsn(), connect_timeout=30, keepalives=1, keepalives_idle=30,
                          keepalives_interval=10, keepalives_count=5) as conn:
+        # The role's default (2 min on the pooler) is for app queries; a
+        # council-wide derivation or enrichment can legitimately run longer.
+        conn.execute("set statement_timeout = 0")
+        conn.commit()
         yield conn
 
 
@@ -80,5 +84,9 @@ def build_candidates(conn: psycopg.Connection, la_code: str) -> int:
         cur.execute("delete from freehold_candidates where la_code = %s and pipeline_property_id is null", (la_code,))
         cur.execute("select build_freehold_candidates(%s)", (la_code,))
         row = cur.fetchone()
+        # Owner by address, EPC bands and last sale (migrations 0010-0011),
+        # from the persistent tables.
+        cur.execute("select save_ccod_titles()")
+        cur.execute("select enrich_freehold_candidates(%s)", (la_code,))
     conn.commit()
     return int(row[0]) if row else 0

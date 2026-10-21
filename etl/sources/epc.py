@@ -177,4 +177,44 @@ def load(path: str, conn, la_code: str) -> int:
 
     n = copy_rows(conn, TABLE, COLUMNS, rows())
     conn.commit()
+    load_latest(path, conn, la_code)
+    return n
+
+
+BAND_COLUMNS = ["uprn", "la_code", "postcode", "address", "band", "lodged", "kind"]
+
+
+def _band(rec: dict) -> str | None:
+    b = str(rec.get("currentEnergyEfficiencyBand") or "").strip().upper().rstrip("+")
+    return b if b in ("A", "B", "C", "D", "E", "F", "G") else None
+
+
+def load_latest(path: str, conn, la_code: str) -> int:
+    """Each UPRN's most recent certificate into epc_latest (migration 0010),
+    which persists across councils and carries the band shown on the map."""
+    from ..db import copy_rows
+
+    latest: dict[int, dict] = {}
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            rec = json.loads(line)
+            uprn = rec.get("uprn")
+            if uprn in (None, "", 0):
+                continue
+            uprn = int(uprn)
+            cur = latest.get(uprn)
+            if cur is None or str(rec.get("registrationDate") or "") > str(cur.get("registrationDate") or ""):
+                latest[uprn] = rec
+
+    def rows():
+        for uprn, rec in latest.items():
+            address = ", ".join(str(rec[k]).strip() for k in ("addressLine1", "addressLine2", "addressLine3", "addressLine4") if rec.get(k))
+            yield (uprn, la_code, rec.get("postcode"), address, _band(rec), (rec.get("registrationDate") or "")[:10] or None, rec.get("_kind"))
+
+    with conn.cursor() as cur:
+        # A UPRN on a council boundary can be certified under either council;
+        # the latest load wins rather than tripping the primary key.
+        cur.execute("delete from epc_latest where la_code = %s or uprn = any(%s)", (la_code, list(latest)))
+    n = copy_rows(conn, "epc_latest", BAND_COLUMNS, rows())
+    conn.commit()
     return n

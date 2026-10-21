@@ -107,12 +107,15 @@ def _build(args) -> int:
     for mod in PIPELINE:
         try:
             paths[mod] = mod.fetch(args.la, args.dest)
-        except (LicenceNotAccepted, FileNotFoundError) as e:
+        except Exception as e:
+            # An optional source never stops a build — not even an outage.
             if mod in OPTIONAL:
                 print(f"  skipped           {mod.DATASET} — {str(e).splitlines()[0]}")
                 continue
-            print(f"STOPPED — {e}")
-            return 1
+            if isinstance(e, (LicenceNotAccepted, FileNotFoundError)):
+                print(f"STOPPED — {e}")
+                return 1
+            raise
 
     # 2. Then connect, and keep the connection busy until the build is done.
     with connect() as conn:

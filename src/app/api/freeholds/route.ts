@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { searchFreeholds, isFreeholdsConfigured, toCsv, DEFAULT_FILTERS, type OwnerType } from "@/lib/freeholds";
+import { searchFreeholds, isFreeholdsConfigured, toCsv, DEFAULT_FILTERS, FREEHOLD_SORTS, type OwnerType, type FreeholdSort } from "@/lib/freeholds";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -44,6 +44,7 @@ export async function GET(req: NextRequest) {
       minEpcUprns,
       minConfidence: nums(p.get("minConfidence")),
       withGeometry: format === "geojson",
+      sort: (p.get("sort") ?? "") in FREEHOLD_SORTS ? (p.get("sort") as FreeholdSort) : undefined,
       limit: nums(p.get("limit")),
     });
 

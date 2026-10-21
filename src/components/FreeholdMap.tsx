@@ -5,6 +5,8 @@ import Link from "next/link";
 // `Map` is aliased: the component would otherwise shadow JavaScript's Map.
 import { APIProvider, Map as GoogleMap, useMap, useMapsLibrary } from "@vis.gl/react-google-maps";
 import type { Area, FreeholdCandidate, OwnerType } from "@/lib/freeholds";
+import { FREEHOLD_SORTS, type FreeholdSort } from "@/lib/freeholdSorts";
+import { EPC_BANDS, EPC_COLOUR, EPC_TEXT, type Band } from "@/lib/epc";
 import { actionAddFreeholdToPipeline, actionRequestAreaImport } from "@/app/actions";
 
 // Phase 2 (plan §6): the F1–F6 filter panel, polygons coloured by confidence,
@@ -39,6 +41,7 @@ interface Filters {
   epcOn: boolean; // F6 toggle
   epcMoreThan: number;
   minConfidence: number;
+  sort: FreeholdSort;
 }
 const DEFAULTS: Filters = {
   la: "E06000038",
@@ -50,8 +53,10 @@ const DEFAULTS: Filters = {
   epcOn: true,
   epcMoreThan: 2,
   minConfidence: 0,
+  sort: "confidence",
 };
 const SAVE_KEY = "freeholds.filters";
+const PAGE = 200; // list rows rendered at a time
 
 type Feature = { type: "Feature"; id: number; geometry: unknown; properties: FreeholdCandidate };
 
@@ -66,11 +71,45 @@ function queryFor(f: Filters) {
   });
   if (f.useClasses.length) p.set("use", f.useClasses.join(","));
   if (f.minConfidence) p.set("minConfidence", String(f.minConfidence));
+  if (f.sort !== "confidence") p.set("sort", f.sort);
   return p;
 }
 
 const colour = (c: number) => (c >= 0.8 ? "#2E7D5B" : c >= 0.5 ? "#C2872B" : "#8A8A8A");
 const pct = (c: number) => `${Math.round(c * 100)}%`;
+const gbp = (n: number) => (n >= 1e6 ? `£${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}m` : `£${Math.round(n / 1000).toLocaleString("en-GB")}k`);
+const year = (iso: string | null) => (iso ? iso.slice(0, 4) : "");
+const PPD_TYPE: Record<string, string> = { D: "detached", S: "semi-detached", T: "terraced", F: "flat", O: "other" };
+
+/** An EPC band in its certificate colour. */
+function EpcBadge({ band, title }: { band: Band | null; title?: string }) {
+  if (!band) return <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[10px] text-ink-muted ring-1 ring-paper-line" title="No EPC band on record">–</span>;
+  return (
+    <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[11px] font-bold" style={{ background: EPC_COLOUR[band], color: EPC_TEXT[band] }} title={title ?? `EPC ${band}`}>
+      {band}
+    </span>
+  );
+}
+
+/** Units per band as a stacked bar, A to G. */
+function EpcBar({ bands }: { bands: FreeholdCandidate["epcBands"] }) {
+  const total = EPC_BANDS.reduce((t, b) => t + (bands[b] ?? 0), 0);
+  if (!total) return null;
+  return (
+    <div>
+      <div className="flex h-5 overflow-hidden rounded">
+        {EPC_BANDS.filter((b) => bands[b]).map((b) => (
+          <div key={b} className="flex items-center justify-center text-[10px] font-bold" style={{ width: `${((bands[b] ?? 0) / total) * 100}%`, background: EPC_COLOUR[b], color: EPC_TEXT[b] }} title={`${bands[b]} unit${bands[b] === 1 ? "" : "s"} rated ${b}`}>
+            {b}
+          </div>
+        ))}
+      </div>
+      <p className="mt-0.5 text-[10px] text-ink-muted">
+        {EPC_BANDS.filter((b) => bands[b]).map((b) => `${bands[b]}×${b}`).join(" · ")} — latest certificate per unit
+      </p>
+    </div>
+  );
+}
 
 // ── Map ──────────────────────────────────────────────────────────────────────
 
@@ -158,12 +197,17 @@ function Polygons({ features, selectedId, onSelect }: { features: Feature[]; sel
 
 // ── Constraint overlays (plan §6) ───────────────────────────────────────────
 
-const OVERLAYS: { key: string; label: string; stroke: string; fill: string }[] = [
-  { key: "conservation-area", label: "Conservation areas", stroke: "#7A3E9D", fill: "#7A3E9D" },
-  { key: "article-4-direction-area", label: "Article 4", stroke: "#B23A48", fill: "#B23A48" },
-  { key: "listed-building-outline", label: "Listed buildings", stroke: "#C2872B", fill: "#C2872B" },
-  { key: "flood-risk-zone", label: "Flood zones", stroke: "#2A6FB0", fill: "#2A6FB0" },
+// `datasets` are the planning.data.gov.uk datasets drawn for the toggle.
+// Listed buildings are mostly published as points: central Reading has 346
+// listed-building points and no outlines at all, so outlines alone drew nothing.
+const OVERLAYS: { key: string; label: string; stroke: string; fill: string; datasets: string[] }[] = [
+  { key: "conservation-area", label: "Conservation areas", stroke: "#7A3E9D", fill: "#7A3E9D", datasets: ["conservation-area"] },
+  { key: "article-4-direction-area", label: "Article 4", stroke: "#B23A48", fill: "#B23A48", datasets: ["article-4-direction-area"] },
+  { key: "listed-building", label: "Listed buildings", stroke: "#C2872B", fill: "#C2872B", datasets: ["listed-building", "listed-building-outline"] },
+  { key: "flood-risk-zone", label: "Flood zones", stroke: "#2A6FB0", fill: "#2A6FB0", datasets: [] },
 ];
+
+const GRADE_COLOUR: Record<string, string> = { I: "#7A1F2B", "II*": "#C2410C", II: "#C2872B" };
 
 // Flood zones are drawn as image tiles straight from the Environment Agency's
 // Flood Map for Planning WMS, not as vectors. As vectors a single normal map
@@ -222,11 +266,32 @@ function Overlays({ enabled, onStatus }: { enabled: string[]; onStatus: (msg: st
       onStatus(null);
       return;
     }
-    const layers = keys.map((key) => {
-      const def = OVERLAYS.find((o) => o.key === key)!;
-      const layer = new google.maps.Data({ map });
-      layer.setStyle({ strokeColor: def.stroke, strokeWeight: 1.5, fillColor: def.fill, fillOpacity: 0.12, clickable: false, zIndex: 0 });
-      return { key, layer };
+    const layers = keys.flatMap((key) => {
+      const def = OVERLAYS.find((o) => o.key === key);
+      if (!def) return []; // a key saved before an overlay was renamed
+      return def.datasets.map((dataset) => {
+        const layer = new google.maps.Data({ map });
+        layer.setStyle((feat) => {
+          const g = feat.getGeometry()?.getType();
+          if (g === "Point") {
+            // Listed buildings: a dot per list entry, coloured by grade; hover for the name.
+            const grade = String(feat.getProperty("listed-building-grade") ?? "");
+            return {
+              icon: { path: google.maps.SymbolPath.CIRCLE, scale: 5, fillColor: GRADE_COLOUR[grade] ?? def.fill, fillOpacity: 0.95, strokeColor: "#fff", strokeWeight: 1.5 },
+              title: `${feat.getProperty("name") ?? "Listed building"}${grade ? ` — Grade ${grade}` : ""}`,
+              clickable: true,
+              zIndex: 5,
+            };
+          }
+          return { strokeColor: def.stroke, strokeWeight: 1.5, fillColor: def.fill, fillOpacity: 0.12, clickable: false, zIndex: 0 };
+        });
+        // A listed-building dot opens its Historic England list entry on planning.data.
+        layer.addListener("click", (e: google.maps.Data.MouseEvent) => {
+          const entity = e.feature.getProperty("entity");
+          if (entity) window.open(`https://www.planning.data.gov.uk/entity/${entity}`, "_blank", "noopener");
+        });
+        return { key, label: def.label, dataset, layer };
+      });
     });
     let ctrl: AbortController | null = null;
     const load = async () => {
@@ -238,19 +303,31 @@ function Overlays({ enabled, onStatus }: { enabled: string[]; onStatus: (msg: st
       ctrl = new AbortController();
       const signal = ctrl.signal;
       let zoomIn = false;
+      const found: Record<string, number> = {};
       await Promise.all(
-        layers.map(async ({ key, layer }) => {
+        layers.map(async ({ label, dataset, layer }) => {
           try {
-            const r = await fetch(`/api/freeholds/overlays?dataset=${key}&bbox=${bbox}`, { signal });
+            const r = await fetch(`/api/freeholds/overlays?dataset=${dataset}&bbox=${bbox}`, { signal });
             const j = await r.json();
             if (signal.aborted) return;
             layer.forEach((f) => layer.remove(f));
             if (j.reason) zoomIn = true;
+            found[label] = (found[label] ?? 0) + (j.features?.length ?? 0);
             if (j.features?.length) layer.addGeoJson(j);
           } catch { /* aborted or offline */ }
         }),
       );
-      if (!signal.aborted) onStatus(zoomIn ? "Zoom in to load the overlays" : null);
+      if (signal.aborted) return;
+      // An empty layer is a gap in what councils have published, not proof of
+      // no constraint — say so rather than leave the toggle looking broken.
+      const none = Object.entries(found).filter(([, n]) => n === 0).map(([l]) => l);
+      onStatus(
+        zoomIn
+          ? "Zoom in to load the overlays"
+          : none.length
+            ? `None published on planning.data.gov.uk for this view: ${none.join(", ")} — check the council's own register.`
+            : null,
+      );
     };
     const idle = map.addListener("idle", load);
     load();
@@ -357,7 +434,9 @@ function SideCard({ c, onClose, onAdded }: { c: FreeholdCandidate; onClose: () =
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="font-serif text-lg leading-tight text-ink">{c.sampleAddresses[0] ?? `Freehold ${c.inspireId}`}</p>
-          <p className="text-xs text-ink-muted">INSPIRE {c.inspireId} · confidence <span style={{ color: colour(c.confidence) }}>{pct(c.confidence)}</span></p>
+          <p className="text-xs text-ink-muted">
+            {c.titleNumber ? <>Title {c.titleNumber} · </> : null}INSPIRE {c.inspireId} · confidence <span style={{ color: colour(c.confidence) }}>{pct(c.confidence)}</span>
+          </p>
         </div>
         <button onClick={onClose} className="text-ink-muted hover:text-ink" aria-label="Close">✕</button>
       </div>
@@ -381,9 +460,36 @@ function SideCard({ c, onClose, onAdded }: { c: FreeholdCandidate; onClose: () =
           </p>
         )}
         {c.useClasses.length > 0 && <p className="text-xs text-ink-muted">Use: {c.useClasses.join(", ")}</p>}
-        {c.lastSalePrice != null && (
-          <p className="text-xs text-ink-muted">Last sale £{c.lastSalePrice.toLocaleString("en-GB")} · {c.lastSaleDate}</p>
-        )}
+        <div>
+          <span className="text-xs uppercase tracking-wide text-ink-muted">EPC rating</span>
+          {c.epcBandTypical ? (
+            <div className="mt-1 space-y-1">
+              <p className="flex items-center gap-2 text-ink">
+                <EpcBadge band={c.epcBandTypical} /> typical
+                {c.epcBandWorst && c.epcBandWorst !== c.epcBandTypical && <><EpcBadge band={c.epcBandWorst} /> worst</>}
+              </p>
+              <EpcBar bands={c.epcBands} />
+            </div>
+          ) : (
+            <p className="text-xs text-ink-muted">No certificate on the register for these units.</p>
+          )}
+        </div>
+        <div>
+          <span className="text-xs uppercase tracking-wide text-ink-muted">Last sold</span>
+          {c.lastSalePrice != null ? (
+            <p className="text-ink">
+              £{c.lastSalePrice.toLocaleString("en-GB")}{" "}
+              <span className="text-xs text-ink-muted">
+                {c.lastSaleDate && new Date(c.lastSaleDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                {c.lastSaleSource === "ccod"
+                  ? " · what the owning company paid (CCOD) — can cover several titles"
+                  : ` · HMLR Price Paid${c.lastSaleType && PPD_TYPE[c.lastSaleType] ? `, ${PPD_TYPE[c.lastSaleType]}` : ""}${c.lastSaleTenure === "F" ? ", freehold" : c.lastSaleTenure === "L" ? ", leasehold" : ""}`}
+              </span>
+            </p>
+          ) : (
+            <p className="text-xs text-ink-muted">No whole-building sale since 1995 in Price Paid.</p>
+          )}
+        </div>
         {c.sampleAddresses.length > 0 && (
           <ul className="max-h-28 overflow-auto rounded-md border border-paper-line p-2 text-xs text-ink-soft">
             {c.sampleAddresses.map((a) => <li key={a}>{a}</li>)}
@@ -585,6 +691,16 @@ export function FreeholdMap({ apiKey, configured }: { apiKey: string; configured
     return () => { clearTimeout(t); ctrl.abort(); };
   }, [f, configured]);
 
+  // A filter change starts the list again from the top — before this the
+  // first 200 rows often looked identical, because most filters only add or
+  // remove rows further down a confidence-sorted list.
+  const [shown, setShown] = useState(PAGE);
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    setShown(PAGE);
+    listRef.current?.scrollTo({ top: 0 });
+  }, [features]);
+
   const byId = useMemo(() => new Map(features.map((x) => [x.id, x.properties])), [features]);
   const selected = selectedId != null ? byId.get(selectedId) ?? null : null;
   const withData = areaRows.filter((a) => a.status === "done" || (a.candidates ?? 0) > 0);
@@ -598,25 +714,40 @@ export function FreeholdMap({ apiKey, configured }: { apiKey: string; configured
   }, []);
 
   const list = (
-    <div className="card max-h-[560px] overflow-auto">
-      {features.length === 0 && !loading && (
-        <p className="p-4 text-sm text-ink-muted">{configured ? "No freeholds match these filters." : "No data yet — connect Supabase and run the ETL."}</p>
-      )}
-      <ul className="divide-y divide-paper-line">
-        {features.slice(0, 200).map(({ id, properties: c }) => (
-          <li key={id}>
-            <button onClick={() => setSelectedId(id)} className={`flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-paper-warm ${id === selectedId ? "bg-paper-warm" : ""}`}>
-              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: c.pipelinePropertyId ? "#1F3A5F" : colour(c.confidence) }} />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-ink">{c.sampleAddresses[0] ?? `Freehold ${c.inspireId}`}</span>
-                <span className="block text-[11px] text-ink-muted">{c.addressCount} addresses · {c.leaseCount} leases · {c.ownerType === "private" ? "private" : c.companyName ?? c.ownerType}</span>
-              </span>
-              <span className="text-xs tabular-nums text-ink-muted">{pct(c.confidence)}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-      {features.length > 200 && <p className="p-2 text-center text-[11px] text-ink-muted">Showing 200 of {features.length} — narrow the filters or export the CSV.</p>}
+    <div className="card flex h-full max-h-[560px] flex-col">
+      <div className="flex items-center gap-2 border-b border-paper-line px-3 py-2">
+        <span className="text-xs text-ink-muted">{loading ? "Searching…" : `${features.length.toLocaleString("en-GB")} result${features.length === 1 ? "" : "s"}`}</span>
+        <select value={f.sort} onChange={(e) => set({ sort: e.target.value as FreeholdSort })} className="field ml-auto w-auto py-0.5 text-xs" aria-label="Sort the list">
+          {Object.entries(FREEHOLD_SORTS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+        </select>
+      </div>
+      <div ref={listRef} className="min-h-0 flex-1 overflow-auto">
+        {features.length === 0 && !loading && (
+          <p className="p-4 text-sm text-ink-muted">{configured ? "No freeholds match these filters." : "No data yet — connect Supabase and run the ETL."}</p>
+        )}
+        <ul className="divide-y divide-paper-line">
+          {features.slice(0, shown).map(({ id, properties: c }) => (
+            <li key={id}>
+              <button onClick={() => setSelectedId(id)} className={`flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-paper-warm ${id === selectedId ? "bg-paper-warm" : ""}`}>
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: c.pipelinePropertyId ? "#1F3A5F" : colour(c.confidence) }} title={`Confidence ${pct(c.confidence)}`} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm text-ink">{c.sampleAddresses[0] ?? `Freehold ${c.inspireId}`}</span>
+                  <span className="block truncate text-[11px] text-ink-muted">
+                    {c.addressCount} addresses · {c.leaseCount} leases · {c.ownerType === "private" ? "private" : c.companyName ?? c.ownerType}
+                    {c.lastSalePrice != null && <> · sold {gbp(c.lastSalePrice)} {year(c.lastSaleDate)}</>}
+                  </span>
+                </span>
+                <EpcBadge band={c.epcBandTypical} title={c.epcBandTypical ? `EPC ${c.epcBandTypical} typical${c.epcBandWorst && c.epcBandWorst !== c.epcBandTypical ? `, worst ${c.epcBandWorst}` : ""}` : undefined} />
+              </button>
+            </li>
+          ))}
+        </ul>
+        {features.length > shown && (
+          <button onClick={() => setShown((n) => n + PAGE)} className="w-full p-2 text-center text-xs text-bronze hover:underline">
+            Showing {shown.toLocaleString("en-GB")} of {features.length.toLocaleString("en-GB")} — show more
+          </button>
+        )}
+      </div>
     </div>
   );
 

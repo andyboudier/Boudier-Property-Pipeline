@@ -14,7 +14,7 @@ export const maxDuration = 30;
 const PDG = "https://www.planning.data.gov.uk/entity.geojson";
 // Flood zones are NOT served here: as vectors one map view is ~12.7 MB. The
 // map draws them as Environment Agency WMS tiles instead.
-const ALLOWED = new Set(["conservation-area", "article-4-direction-area", "listed-building-outline"]);
+const ALLOWED = new Set(["conservation-area", "article-4-direction-area", "listed-building", "listed-building-outline"]);
 const MAX_PAGES = 6; // 500 a page; these layers rarely exceed one
 const MAX_SPAN = 0.4; // degrees — refuse whole-county viewports rather than time out
 

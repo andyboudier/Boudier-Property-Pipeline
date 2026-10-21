@@ -1,5 +1,9 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Band as EpcBand } from "./epc";
+import type { FreeholdSort } from "./freeholdSorts";
+
+export { FREEHOLD_SORTS, type FreeholdSort } from "./freeholdSorts";
 
 // ──────────────────────────────────────────────────────────────────────────
 // Unbroken Freehold Finder — data access (plan §4, §6).
@@ -35,6 +39,7 @@ export interface FreeholdFilters {
   minEpcUprns?: number | null; // F6, null = filter off
   minConfidence?: number; // 0–1
   withGeometry?: boolean; // include the polygon (GeoJSON) for the map
+  sort?: FreeholdSort;
   limit?: number;
 }
 
@@ -58,6 +63,12 @@ export interface FreeholdCandidate {
   sampleAddresses: string[];
   lastSaleDate: string | null;
   lastSalePrice: number | null;
+  lastSaleTenure: string | null; // F | L
+  lastSaleType: string | null; // Price Paid property type: D S T F O
+  lastSaleSource: "price-paid" | "ccod" | null; // HMLR Price Paid, or what the owning company paid (CCOD)
+  epcBands: Partial<Record<EpcBand, number>>; // units per band, latest certificate each
+  epcBandTypical: EpcBand | null; // median across the building
+  epcBandWorst: EpcBand | null;
   confidence: number;
   pipelinePropertyId: string | null;
   refreshedAt: string;
@@ -99,7 +110,8 @@ type Row = Record<string, unknown>;
 const COLUMNS =
   "id,inspire_id,title_number,la_code,centroid,address_count,lease_count,epc_uprn_count,epc_cert_count," +
   "owner_type,owner_type_inferred,company_name,company_number,company_address,use_classes,sample_addresses," +
-  "last_sale_date,last_sale_price,confidence,pipeline_property_id,refreshed_at";
+  "last_sale_date,last_sale_price,last_sale_tenure,last_sale_type,last_sale_source," +
+  "epc_bands,epc_band_typical,epc_band_worst,confidence,pipeline_property_id,refreshed_at";
 
 /** PostGIS geometry comes back as GeoJSON with a legacy `crs` member; drop it. */
 function cleanGeo(g: unknown): Record<string, unknown> | null {
@@ -132,6 +144,12 @@ function toCandidate(r: Row): FreeholdCandidate {
     sampleAddresses: Array.isArray(r.sample_addresses) ? (r.sample_addresses as string[]) : [],
     lastSaleDate: s(r.last_sale_date),
     lastSalePrice: r.last_sale_price == null ? null : n(r.last_sale_price),
+    lastSaleTenure: s(r.last_sale_tenure),
+    lastSaleType: s(r.last_sale_type),
+    lastSaleSource: (s(r.last_sale_source) as FreeholdCandidate["lastSaleSource"]) ?? null,
+    epcBands: r.epc_bands && typeof r.epc_bands === "object" ? (r.epc_bands as FreeholdCandidate["epcBands"]) : {},
+    epcBandTypical: (s(r.epc_band_typical) as EpcBand | null) ?? null,
+    epcBandWorst: (s(r.epc_band_worst) as EpcBand | null) ?? null,
     confidence: n(r.confidence),
     pipelinePropertyId: s(r.pipeline_property_id),
     refreshedAt: String(r.refreshed_at ?? ""),
@@ -164,7 +182,13 @@ export async function searchFreeholds(f: FreeholdFilters): Promise<{ rows: Freeh
   if (f.minEpcUprns != null) q = q.gt("epc_uprn_count", f.minEpcUprns);
   if (f.minConfidence) q = q.gte("confidence", f.minConfidence);
 
-  const { data, error } = await q.order("confidence", { ascending: false }).order("address_count", { ascending: false }).limit(Math.min(f.limit ?? 1000, 5000));
+  switch (f.sort ?? "confidence") {
+    case "addresses": q = q.order("address_count", { ascending: false }); break;
+    case "epc-worst": q = q.order("epc_band_worst", { ascending: false, nullsFirst: false }); break;
+    case "sale-recent": q = q.order("last_sale_date", { ascending: false, nullsFirst: false }); break;
+    case "sale-price": q = q.order("last_sale_price", { ascending: false, nullsFirst: false }); break;
+  }
+  const { data, error } = await q.order("confidence", { ascending: false }).order("address_count", { ascending: false }).order("id").limit(Math.min(f.limit ?? 1000, 5000));
   if (error) throw new Error(`freehold query failed: ${error.message}`);
   return { rows: (data ?? []).map((r) => toCandidate(r as unknown as Row)), configured: true };
 }
@@ -209,8 +233,13 @@ export function toCsv(rows: FreeholdCandidate[]): string {
     ["company_address", (r) => r.companyAddress ?? ""],
     ["use_classes", (r) => r.useClasses.join(" ")],
     ["confidence", (r) => r.confidence],
+    ["title_number", (r) => r.titleNumber ?? ""],
+    ["epc_typical", (r) => r.epcBandTypical ?? ""],
+    ["epc_worst", (r) => r.epcBandWorst ?? ""],
+    ["epc_bands", (r) => Object.entries(r.epcBands).map(([b, k]) => `${b}:${k}`).join(" ")],
     ["last_sale_date", (r) => r.lastSaleDate ?? ""],
     ["last_sale_price", (r) => r.lastSalePrice ?? ""],
+    ["last_sale_source", (r) => r.lastSaleSource ?? ""],
     ["lat", (r) => r.centroid?.lat ?? ""],
     ["lng", (r) => r.centroid?.lng ?? ""],
     ["title_boundary_url", (r) => titleBoundaryUrl(r.inspireId)],
@@ -272,7 +301,52 @@ export async function getArea(laCode: string): Promise<Area | null> {
   const db = await getClient();
   if (!db) return null;
   const { data } = await db.from("area_imports").select("*").eq("la_code", laCode).maybeSingle();
-  return data ? toArea(data as Row) : null;
+  return data ? reconcile(toArea(data as Row)) : null;
+}
+
+/**
+ * A job that dies before the ETL starts (a missing repository secret, say)
+ * never reports back, so its area would sit at "queued" for ever. Ask GitHub
+ * how the run for this request ended and record a failure, with the step it
+ * failed at, so the map can offer a retry.
+ */
+async function reconcile(a: Area): Promise<Area> {
+  const token = process.env.GITHUB_DISPATCH_TOKEN;
+  if (!token || !a.requestedAt || (a.status !== "queued" && a.status !== "running")) return a;
+  const requested = new Date(a.requestedAt).getTime();
+  if (Date.now() - requested < 60_000) return a;
+  try {
+    const gh = (path: string) =>
+      fetch(`https://api.github.com/repos/${REPO}/${path}`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+        cache: "no-store",
+      });
+    const since = new Date(requested - 60_000).toISOString();
+    const r = await gh(`actions/workflows/${WORKFLOW}/runs?event=workflow_dispatch&created=%3E%3D${encodeURIComponent(since)}&per_page=20`);
+    if (!r.ok) return a;
+    const runs = ((await r.json()) as { workflow_runs?: { id: number; status: string; conclusion: string | null; created_at: string; html_url: string }[] }).workflow_runs ?? [];
+    // The first run created after this request is the one it dispatched.
+    const run = runs
+      .filter((x) => new Date(x.created_at).getTime() >= requested - 30_000)
+      .sort((x, y) => x.created_at.localeCompare(y.created_at))[0];
+    if (!run || run.status !== "completed" || run.conclusion === "success") return a;
+
+    let step = "";
+    const j = await gh(`actions/runs/${run.id}/jobs`);
+    if (j.ok) {
+      const jobs = ((await j.json()) as { jobs?: { steps?: { name: string; conclusion: string | null }[] }[] }).jobs ?? [];
+      step = jobs.flatMap((x) => x.steps ?? []).find((x) => x.conclusion === "failure")?.name ?? "";
+    }
+    const message =
+      step === "Check secrets"
+        ? "the GitHub job is missing its repository secrets (SUPABASE_DB_URL, EPC_API_KEY, HMLR_API_KEY)"
+        : `the GitHub job ${run.conclusion}${step ? ` at "${step}"` : ""}`;
+    const db = await getClient();
+    await db?.from("area_imports").update({ status: "failed", finished_at: new Date().toISOString(), message }).eq("la_code", a.laCode).in("status", ["queued", "running"]);
+    return { ...a, status: "failed", message };
+  } catch {
+    return a;
+  }
 }
 
 /** The council a point falls in, from planning.data.gov.uk (OGL, no key). */
