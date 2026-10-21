@@ -60,17 +60,28 @@ def main() -> int:
         return 0 if ready else 1
 
     print(f"Building freehold_candidates for {args.la}\n")
+
+    # 1. Download everything first, with no database connection open. A cold
+    #    INSPIRE pull takes 10-20 minutes, and the Supabase pooler closes an
+    #    idle connection long before that — which is exactly how West
+    #    Berkshire's first build died ("server closed the connection").
+    paths: dict = {}
+    for mod in PIPELINE:
+        try:
+            paths[mod] = mod.fetch(args.la, args.dest)
+        except (LicenceNotAccepted, FileNotFoundError) as e:
+            if mod in OPTIONAL:
+                print(f"  skipped           {mod.DATASET} — {str(e).splitlines()[0]}")
+                continue
+            print(f"STOPPED — {e}")
+            return 1
+
+    # 2. Then connect, and keep the connection busy until the build is done.
     with connect() as conn:
         for mod in PIPELINE:
-            try:
-                path = mod.fetch(args.la, args.dest)
-            except (LicenceNotAccepted, FileNotFoundError) as e:
-                if mod in OPTIONAL:
-                    print(f"  skipped           {mod.DATASET} — {str(e).splitlines()[0]}")
-                    continue
-                print(f"STOPPED — {e}")
-                return 1
-            n = mod.load(path, conn, args.la)
+            if mod not in paths:
+                continue
+            n = mod.load(paths[mod], conn, args.la)
             print(f"  loaded {n:>9,}  {mod.DATASET}")
             if mod is epc:
                 with conn.cursor() as cur:

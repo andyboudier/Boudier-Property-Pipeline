@@ -12,8 +12,10 @@ export const maxDuration = 30;
 //   GET /api/freeholds/overlays?dataset=conservation-area&bbox=west,south,east,north
 
 const PDG = "https://www.planning.data.gov.uk/entity.geojson";
-const ALLOWED = new Set(["conservation-area", "article-4-direction-area", "listed-building-outline", "flood-risk-zone"]);
-const MAX_PAGES = 6; // 500 a page; flood zones are dense, the rest rarely exceed one
+// Flood zones are NOT served here: as vectors one map view is ~12.7 MB. The
+// map draws them as Environment Agency WMS tiles instead.
+const ALLOWED = new Set(["conservation-area", "article-4-direction-area", "listed-building-outline"]);
+const MAX_PAGES = 6; // 500 a page; these layers rarely exceed one
 const MAX_SPAN = 0.4; // degrees — refuse whole-county viewports rather than time out
 
 export async function GET(req: NextRequest) {

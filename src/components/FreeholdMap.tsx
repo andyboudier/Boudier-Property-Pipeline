@@ -164,18 +164,64 @@ const OVERLAYS: { key: string; label: string; stroke: string; fill: string }[] =
   { key: "flood-risk-zone", label: "Flood zones", stroke: "#2A6FB0", fill: "#2A6FB0" },
 ];
 
+// Flood zones are drawn as image tiles straight from the Environment Agency's
+// Flood Map for Planning WMS, not as vectors. As vectors a single normal map
+// view of Reading was 2,146 shapes and 12.7 MB — over Vercel's 4.5 MB response
+// cap and the 30 s limit, so the layer silently showed nothing. A tile is ~40 KB
+// and the server is not involved.
+const FLOOD_WMS = "https://environment.data.gov.uk/spatialdata/flood-map-for-planning-flood-zones/wms";
+const FLOOD_LAYER = "Flood_Zones_2_3_Rivers_and_Sea";
+const WEB_MERCATOR_R = 20037508.342789244;
+
+function floodTiles(): google.maps.ImageMapType {
+  return new google.maps.ImageMapType({
+    name: "Flood zones",
+    tileSize: new google.maps.Size(256, 256),
+    opacity: 0.55,
+    getTileUrl: (coord, zoom) => {
+      const n = 2 ** zoom;
+      const size = (2 * WEB_MERCATOR_R) / n;
+      const minx = -WEB_MERCATOR_R + coord.x * size;
+      const maxy = WEB_MERCATOR_R - coord.y * size;
+      const q = new URLSearchParams({
+        service: "WMS", version: "1.3.0", request: "GetMap", layers: FLOOD_LAYER, styles: "",
+        crs: "EPSG:3857", bbox: `${minx},${maxy - size},${minx + size},${maxy}`,
+        width: "256", height: "256", format: "image/png", transparent: "true",
+      });
+      return `${FLOOD_WMS}?${q}`;
+    },
+  });
+}
+
 /**
- * One Data layer per enabled overlay, refetched for the viewport whenever the
- * map settles. Non-clickable, so a click always reaches the building beneath.
+ * Vector overlays get one Data layer each, refetched for the viewport whenever
+ * the map settles; flood zones are a tile layer. All are non-clickable, so a
+ * click always reaches the building beneath.
  */
 function Overlays({ enabled, onStatus }: { enabled: string[]; onStatus: (msg: string | null) => void }) {
   const map = useMap();
+
+  // Flood: a WMS tile overlay, independent of the viewport fetch below.
+  const flood = enabled.includes("flood-risk-zone");
   useEffect(() => {
-    if (!map || enabled.length === 0) {
+    if (!map || !flood) return;
+    const tiles = floodTiles();
+    map.overlayMapTypes.push(tiles);
+    return () => {
+      const arr = map.overlayMapTypes;
+      for (let i = 0; i < arr.getLength(); i++) if (arr.getAt(i) === tiles) { arr.removeAt(i); break; }
+    };
+  }, [map, flood]);
+
+  const vectorKeys = enabled.filter((k) => k !== "flood-risk-zone");
+  const vectorKey = vectorKeys.join(",");
+  useEffect(() => {
+    const keys = vectorKey ? vectorKey.split(",") : [];
+    if (!map || keys.length === 0) {
       onStatus(null);
       return;
     }
-    const layers = enabled.map((key) => {
+    const layers = keys.map((key) => {
       const def = OVERLAYS.find((o) => o.key === key)!;
       const layer = new google.maps.Data({ map });
       layer.setStyle({ strokeColor: def.stroke, strokeWeight: 1.5, fillColor: def.fill, fillOpacity: 0.12, clickable: false, zIndex: 0 });
@@ -212,7 +258,7 @@ function Overlays({ enabled, onStatus }: { enabled: string[]; onStatus: (msg: st
       google.maps.event.removeListener(idle);
       layers.forEach(({ layer }) => layer.setMap(null));
     };
-  }, [map, enabled, onStatus]);
+  }, [map, vectorKey, onStatus]);
   return null;
 }
 
