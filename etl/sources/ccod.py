@@ -19,7 +19,7 @@ LICENCE_ENV = "HMLR_LICENCE_ACCEPTED"
 SOURCE_URL = "https://use-land-property-data.service.gov.uk/datasets/ccod"
 API_DATASET = "ccod"
 TABLE = "stg_ccod"
-COLUMNS = ["title_number", "tenure", "property_address", "postcode", "company_name", "company_number", "proprietorship", "country_incorporated", "is_overseas"]
+COLUMNS = ["title_number", "tenure", "property_address", "postcode", "company_name", "company_number", "proprietorship", "country_incorporated", "is_overseas", "proprietor_address"]
 
 
 def fetch(la_code: str, dest: str) -> str:
@@ -27,6 +27,14 @@ def fetch(la_code: str, dest: str) -> str:
     require_licence(LICENCE_ENV, DATASET, SOURCE_URL)
     name = latest_file(API_DATASET)
     return download(API_DATASET, name, Path(dest) / "ccod")
+
+
+def _prop_addr(rec: dict) -> str | None:
+    """The proprietor's correspondence address, as published — the address to
+    write to for a company-owned freehold."""
+    parts = [get(rec, f"Proprietor (1) Address ({i})") for i in (1, 2, 3)]
+    parts = [p for p in parts if p]
+    return "; ".join(parts) if parts else None
 
 
 def _row(rec: dict):
@@ -46,6 +54,7 @@ def _row(rec: dict):
         get(rec, "Proprietorship Category (1)"),
         country or None,
         bool(country) and country.upper() not in ("UNITED KINGDOM", "ENGLAND", "WALES", "SCOTLAND", "NORTHERN IRELAND"),
+        _prop_addr(rec),
     )
 
 
