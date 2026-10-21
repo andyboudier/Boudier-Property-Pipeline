@@ -507,7 +507,7 @@ export async function actionAddFreeholdToPipeline(candidateId: number) {
 
   const area = LA_NAMES[c.laCode] ? null : await (await import("@/lib/freeholds")).getArea(c.laCode);
   const la = LA_NAMES[c.laCode] ?? { town: area?.laName ?? "", lpa: area?.laName ?? "" };
-  const name = c.sampleAddresses[0] || `Freehold ${c.inspireId}`;
+  const name = c.sampleAddresses[0] || (c.nearAddress ? `Next to ${c.nearAddress}` : `Freehold ${c.inspireId}`);
   const owner =
     c.ownerType === "private"
       ? `Private owner${c.ownerTypeInferred ? " (inferred — no company match; confirm via title register)" : ""}`
@@ -515,7 +515,9 @@ export async function actionAddFreeholdToPipeline(candidateId: number) {
         (c.companyNumber ? ` (${c.companyNumber})` : "") +
         (c.companyAddress ? `\nWrite to: ${c.companyAddress}` : "");
   const notes = [
-    `Unbroken freehold candidate — ${c.addressCount} addresses, ${c.leaseCount} registered leases, ${c.epcUprnCount} UPRNs with an EPC (${c.epcCertCount} certificates).`,
+    c.possibleConversion
+      ? `Possible conversion — ${c.uprnCount} Ordnance Survey addresses on the freehold, ${c.addressCount} with an EPC or lease, ${c.leaseCount} registered leases. Unconfirmed: check on site.`
+      : `Unbroken freehold candidate — ${c.addressCount} addresses, ${c.leaseCount} registered leases, ${c.epcUprnCount} UPRNs with an EPC (${c.epcCertCount} certificates).`,
     `Use classes: ${c.useClasses.join(", ") || "not identified"}. Confidence ${Math.round(c.confidence * 100)}%.`,
     owner,
     c.sampleAddresses.length ? `Addresses: ${c.sampleAddresses.join("; ")}` : "",
@@ -601,4 +603,15 @@ export async function actionRequestAreaImport(laCode: string, laName: string, la
   const r = await requestImport(laCode, laName, lat, lng);
   revalidatePath("/freeholds");
   return r;
+}
+
+/** Store a possible conversion's reverse-geocoded address and match its sale and owner. */
+export async function actionResolveConversion(id: number, a: { label: string; paon: string; street: string; postcode: string }) {
+  const { resolveConversion } = await import("@/lib/freeholds");
+  try {
+    const c = await resolveConversion(id, a);
+    return c ? { ok: true as const, candidate: c } : { ok: false as const, error: "Not found." };
+  } catch (e) {
+    return { ok: false as const, error: (e as Error).message };
+  }
 }

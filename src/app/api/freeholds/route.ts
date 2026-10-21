@@ -44,6 +44,7 @@ export async function GET(req: NextRequest) {
       minEpcUprns,
       minConfidence: nums(p.get("minConfidence")),
       withGeometry: format === "geojson",
+      conversions: p.get("mode") === "conversions",
       sort: (p.get("sort") ?? "") in FREEHOLD_SORTS ? (p.get("sort") as FreeholdSort) : undefined,
       limit: nums(p.get("limit")),
     });

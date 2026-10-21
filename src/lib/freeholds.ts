@@ -39,6 +39,9 @@ export interface FreeholdFilters {
   minEpcUprns?: number | null; // F6, null = filter off
   minConfidence?: number; // 0–1
   withGeometry?: boolean; // include the polygon (GeoJSON) for the map
+  // Possible conversions (migration 0012): several OS addresses, almost none
+  // corroborated. F2 then counts OS UPRNs; F5, F6 and confidence don't apply.
+  conversions?: boolean;
   sort?: FreeholdSort;
   limit?: number;
 }
@@ -69,6 +72,9 @@ export interface FreeholdCandidate {
   epcBands: Partial<Record<EpcBand, number>>; // units per band, latest certificate each
   epcBandTypical: EpcBand | null; // median across the building
   epcBandWorst: EpcBand | null;
+  uprnCount: number | null; // every OS UPRN inside, corroborated or not
+  possibleConversion: boolean;
+  nearAddress: string | null; // nearest certified address, for a conversion with none of its own
   confidence: number;
   pipelinePropertyId: string | null;
   refreshedAt: string;
@@ -111,7 +117,8 @@ const COLUMNS =
   "id,inspire_id,title_number,la_code,centroid,address_count,lease_count,epc_uprn_count,epc_cert_count," +
   "owner_type,owner_type_inferred,company_name,company_number,company_address,use_classes,sample_addresses," +
   "last_sale_date,last_sale_price,last_sale_tenure,last_sale_type,last_sale_source," +
-  "epc_bands,epc_band_typical,epc_band_worst,confidence,pipeline_property_id,refreshed_at";
+  "epc_bands,epc_band_typical,epc_band_worst,uprn_count,possible_conversion,near_address," +
+  "confidence,pipeline_property_id,refreshed_at";
 
 /** PostGIS geometry comes back as GeoJSON with a legacy `crs` member; drop it. */
 function cleanGeo(g: unknown): Record<string, unknown> | null {
@@ -150,6 +157,9 @@ function toCandidate(r: Row): FreeholdCandidate {
     epcBands: r.epc_bands && typeof r.epc_bands === "object" ? (r.epc_bands as FreeholdCandidate["epcBands"]) : {},
     epcBandTypical: (s(r.epc_band_typical) as EpcBand | null) ?? null,
     epcBandWorst: (s(r.epc_band_worst) as EpcBand | null) ?? null,
+    uprnCount: r.uprn_count == null ? null : n(r.uprn_count),
+    possibleConversion: r.possible_conversion === true,
+    nearAddress: s(r.near_address),
     confidence: n(r.confidence),
     pipelinePropertyId: s(r.pipeline_property_id),
     refreshedAt: String(r.refreshed_at ?? ""),
@@ -168,22 +178,27 @@ export async function searchFreeholds(f: FreeholdFilters): Promise<{ rows: Freeh
   const maxAddresses = f.maxAddresses ?? DEFAULT_FILTERS.maxAddresses;
   const maxLeases = f.maxLeases ?? DEFAULT_FILTERS.maxLeases;
 
+  const counted = f.conversions ? "uprn_count" : "address_count";
   let q = db
     .from("freehold_candidates")
     .select(f.withGeometry ? `${COLUMNS},geom` : COLUMNS)
-    .gte("address_count", minAddresses) // F2
-    .lte("address_count", maxAddresses)
+    .gte(counted, minAddresses) // F2
+    .lte(counted, maxAddresses)
     .lte("lease_count", maxLeases); // F3
 
   if (f.laCodes?.length) q = q.in("la_code", f.laCodes);
   if (f.ownerTypes?.length) q = q.in("owner_type", f.ownerTypes); // F4
-  if (f.useClasses?.length) q = q.overlaps("use_classes", f.useClasses); // F5
-  // F6 is a toggle: null means the filter is off entirely.
-  if (f.minEpcUprns != null) q = q.gt("epc_uprn_count", f.minEpcUprns);
-  if (f.minConfidence) q = q.gte("confidence", f.minConfidence);
+  if (f.conversions) {
+    q = q.eq("possible_conversion", true);
+  } else {
+    if (f.useClasses?.length) q = q.overlaps("use_classes", f.useClasses); // F5
+    // F6 is a toggle: null means the filter is off entirely.
+    if (f.minEpcUprns != null) q = q.gt("epc_uprn_count", f.minEpcUprns);
+    if (f.minConfidence) q = q.gte("confidence", f.minConfidence);
+  }
 
   switch (f.sort ?? "confidence") {
-    case "addresses": q = q.order("address_count", { ascending: false }); break;
+    case "addresses": q = q.order(counted, { ascending: false }); break;
     case "epc-worst": q = q.order("epc_band_worst", { ascending: false, nullsFirst: false }); break;
     case "sale-recent": q = q.order("last_sale_date", { ascending: false, nullsFirst: false }); break;
     case "sale-price": q = q.order("last_sale_price", { ascending: false, nullsFirst: false }); break;
@@ -199,6 +214,19 @@ export async function getFreehold(id: number): Promise<FreeholdCandidate | null>
   const { data, error } = await db.from("freehold_candidates").select(COLUMNS).eq("id", id).maybeSingle();
   if (error) throw new Error(`freehold lookup failed: ${error.message}`);
   return data ? toCandidate(data as unknown as Row) : null;
+}
+
+/**
+ * A possible conversion has no address of its own. Once the map has
+ * reverse-geocoded one, store the address and look up its last sale and any
+ * company freehold title at it (resolve_conversion, migration 0012).
+ */
+export async function resolveConversion(id: number, a: { label: string; paon: string; street: string; postcode: string }): Promise<FreeholdCandidate | null> {
+  const db = await getClient();
+  if (!db) return null;
+  const { error } = await db.rpc("resolve_conversion", { p_id: id, p_label: a.label, p_paon: a.paon, p_street: a.street, p_postcode: a.postcode });
+  if (error) throw new Error(`conversion lookup failed: ${error.message}`);
+  return getFreehold(id);
 }
 
 /** Record that a candidate has been promoted to a Firestore property. */
@@ -224,6 +252,9 @@ export function toCsv(rows: FreeholdCandidate[]): string {
     ["first_address", (r) => r.sampleAddresses[0] ?? ""],
     ["sample_addresses", (r) => r.sampleAddresses.join(" | ")],
     ["addresses", (r) => r.addressCount],
+    ["os_uprns", (r) => r.uprnCount ?? ""],
+    ["possible_conversion", (r) => (r.possibleConversion ? "yes" : "")],
+    ["near_address", (r) => r.nearAddress ?? ""],
     ["leases", (r) => r.leaseCount],
     ["epc_uprns", (r) => r.epcUprnCount],
     ["epc_certificates", (r) => r.epcCertCount],

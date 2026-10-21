@@ -84,8 +84,9 @@ def build_candidates(conn: psycopg.Connection, la_code: str) -> int:
         cur.execute("delete from freehold_candidates where la_code = %s and pipeline_property_id is null", (la_code,))
         cur.execute("select build_freehold_candidates(%s)", (la_code,))
         row = cur.fetchone()
-        # Owner by address, EPC bands and last sale (migrations 0010-0011),
-        # from the persistent tables.
+        # Possible conversions (0012), then owner by address, EPC bands and
+        # last sale from the persistent tables (0010-0011).
+        cur.execute("select add_possible_conversions(%s)", (la_code,))
         cur.execute("select save_ccod_titles()")
         cur.execute("select enrich_freehold_candidates(%s)", (la_code,))
     conn.commit()

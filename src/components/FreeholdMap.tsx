@@ -7,7 +7,7 @@ import { APIProvider, Map as GoogleMap, useMap, useMapsLibrary } from "@vis.gl/r
 import type { Area, FreeholdCandidate, OwnerType } from "@/lib/freeholds";
 import { FREEHOLD_SORTS, type FreeholdSort } from "@/lib/freeholdSorts";
 import { EPC_BANDS, EPC_COLOUR, EPC_TEXT, type Band } from "@/lib/epc";
-import { actionAddFreeholdToPipeline, actionRequestAreaImport } from "@/app/actions";
+import { actionAddFreeholdToPipeline, actionRequestAreaImport, actionResolveConversion } from "@/app/actions";
 
 // Phase 2 (plan §6): the F1–F6 filter panel, polygons coloured by confidence,
 // a side card, CSV export and Add to Pipeline. Polygons are drawn with Google
@@ -33,6 +33,7 @@ const USE_OPTIONS = ["C3", "C4", "E"];
 
 interface Filters {
   la: string;
+  mode: "multi" | "conversions"; // conversions: several OS addresses, almost none certified
   minAddresses: number;
   maxAddresses: number;
   maxLeases: number; // F3: 0 = strictly unbroken
@@ -45,6 +46,7 @@ interface Filters {
 }
 const DEFAULTS: Filters = {
   la: "E06000038",
+  mode: "multi",
   minAddresses: 2,
   maxAddresses: 20,
   maxLeases: 0,
@@ -72,10 +74,15 @@ function queryFor(f: Filters) {
   if (f.useClasses.length) p.set("use", f.useClasses.join(","));
   if (f.minConfidence) p.set("minConfidence", String(f.minConfidence));
   if (f.sort !== "confidence") p.set("sort", f.sort);
+  if (f.mode === "conversions") p.set("mode", "conversions");
   return p;
 }
 
 const colour = (c: number) => (c >= 0.8 ? "#2E7D5B" : c >= 0.5 ? "#C2872B" : "#8A8A8A");
+const CONVERSION = "#0F766E"; // possible conversions, on the map and in the list
+const dot = (c: FreeholdCandidate) => (c.pipelinePropertyId ? "#1F3A5F" : c.possibleConversion ? CONVERSION : colour(c.confidence));
+/** What to call a candidate: its own address, or for a conversion with none, its neighbour's. */
+const title = (c: FreeholdCandidate) => c.sampleAddresses[0] ?? (c.nearAddress ? `Next to ${c.nearAddress}` : `Freehold ${c.inspireId}`);
 const pct = (c: number) => `${Math.round(c * 100)}%`;
 const gbp = (n: number) => (n >= 1e6 ? `£${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}m` : `£${Math.round(n / 1000).toLocaleString("en-GB")}k`);
 const year = (iso: string | null) => (iso ? iso.slice(0, 4) : "");
@@ -174,11 +181,12 @@ function Polygons({ features, selectedId, onSelect }: { features: Feature[]; sel
     map.data.setStyle((f) => {
       const c = Number(f.getProperty("confidence") ?? 0);
       const inPipeline = !!f.getProperty("pipelinePropertyId");
+      const fill = inPipeline ? "#1F3A5F" : f.getProperty("possibleConversion") ? CONVERSION : colour(c);
       const sel = f.getId() === selectedId;
       return {
-        fillColor: inPipeline ? "#1F3A5F" : colour(c),
+        fillColor: fill,
         fillOpacity: sel ? 0.6 : 0.35,
-        strokeColor: sel ? "#16202B" : inPipeline ? "#1F3A5F" : colour(c),
+        strokeColor: sel ? "#16202B" : fill,
         strokeWeight: sel ? 3 : 1,
         zIndex: sel ? 10 : 1,
       };
@@ -406,7 +414,51 @@ function AreaBanner({ lookup, currentLa, onShow, onImport, busy, error }: {
 
 // ── Side card ────────────────────────────────────────────────────────────────
 
-function SideCard({ c, onClose, onAdded }: { c: FreeholdCandidate; onClose: () => void; onAdded: (id: number, propertyId: string) => void }) {
+/**
+ * A possible conversion has no address of its own (no EPC). On opening one,
+ * reverse-geocode the polygon with the Maps key's Geocoding API, then let the
+ * server match Price Paid and CCOD to that address and store the result.
+ */
+function ResolveAddress({ c, onUpdated }: { c: FreeholdCandidate; onUpdated: (c: FreeholdCandidate) => void }) {
+  const geocoding = useMapsLibrary("geocoding");
+  const [state, setState] = useState<"busy" | "failed" | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => {
+    if (!geocoding || !c.centroid || c.sampleAddresses.length) return;
+    let cancelled = false;
+    setState("busy");
+    setMsg(null);
+    (async () => {
+      try {
+        const { results } = await new geocoding.Geocoder().geocode({ location: c.centroid });
+        const r = results.find((x) => x.types.includes("street_address") || x.types.includes("premise")) ?? results[0];
+        if (!r) throw new Error("Google has no address for this point.");
+        const part = (t: string) => r.address_components.find((a) => a.types.includes(t))?.long_name ?? "";
+        const res = await actionResolveConversion(c.id, {
+          label: r.formatted_address.replace(/, UK$/, ""),
+          paon: part("street_number") || part("premise"),
+          street: part("route"),
+          postcode: part("postal_code"),
+        });
+        if (cancelled) return;
+        if (!res.ok) throw new Error(res.error);
+        onUpdated(res.candidate);
+        setState(null);
+      } catch (e) {
+        if (cancelled) return;
+        setState("failed");
+        const m = (e as Error).message ?? String(e);
+        setMsg(/REQUEST_DENIED|not authorized/i.test(m) ? "Address lookup needs the Geocoding API enabled on the Maps key." : m);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [geocoding, c.id, c.centroid, c.sampleAddresses.length, onUpdated]);
+  if (state === "busy") return <p className="text-xs text-ink-muted">Looking up the address…</p>;
+  if (state === "failed") return <p className="text-xs text-status-stop">{msg}</p>;
+  return null;
+}
+
+function SideCard({ c, onClose, onAdded, onUpdated }: { c: FreeholdCandidate; onClose: () => void; onAdded: (id: number, propertyId: string) => void; onUpdated?: (c: FreeholdCandidate) => void }) {
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
   const sv = c.centroid ? `https://www.google.com/maps?q=&layer=c&cbll=${c.centroid.lat},${c.centroid.lng}` : null;
@@ -433,7 +485,7 @@ function SideCard({ c, onClose, onAdded }: { c: FreeholdCandidate; onClose: () =
     <aside className="card flex h-full flex-col p-4">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="font-serif text-lg leading-tight text-ink">{c.sampleAddresses[0] ?? `Freehold ${c.inspireId}`}</p>
+          <p className="font-serif text-lg leading-tight text-ink">{title(c)}</p>
           <p className="text-xs text-ink-muted">
             {c.titleNumber ? <>Title {c.titleNumber} · </> : null}INSPIRE {c.inspireId} · confidence <span style={{ color: colour(c.confidence) }}>{pct(c.confidence)}</span>
           </p>
@@ -442,7 +494,10 @@ function SideCard({ c, onClose, onAdded }: { c: FreeholdCandidate; onClose: () =
       </div>
 
       <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
-        {[["Addresses", c.addressCount], ["Leases", c.leaseCount], ["EPCs", c.epcUprnCount]].map(([k, v]) => (
+        {(c.possibleConversion
+          ? [["OS addresses", c.uprnCount ?? 0], ["Certified", c.addressCount], ["Leases", c.leaseCount]]
+          : [["Addresses", c.addressCount], ["Leases", c.leaseCount], ["EPCs", c.epcUprnCount]]
+        ).map(([k, v]) => (
           <div key={String(k)} className="rounded-md bg-paper-warm px-2 py-1.5">
             <dt className="text-[10px] uppercase tracking-wide text-ink-muted">{k}</dt>
             <dd className="text-lg font-semibold tabular-nums text-ink">{v}</dd>
@@ -451,6 +506,14 @@ function SideCard({ c, onClose, onAdded }: { c: FreeholdCandidate; onClose: () =
       </dl>
 
       <div className="mt-3 space-y-2 text-sm">
+        {c.possibleConversion && (
+          <div className="rounded-md p-2 text-xs" style={{ background: "#0F766E14", color: CONVERSION }}>
+            <span className="font-semibold">Possible conversion.</span> Ordnance Survey lists {c.uprnCount} addresses on this freehold, but
+            {c.addressCount ? ` only ${c.addressCount} has` : " none has"} an EPC or lease. Check Street View before relying on it.
+            {c.sampleAddresses[0] && <span className="block pt-1 text-ink-muted">Address from Google reverse geocoding.</span>}
+          </div>
+        )}
+        {c.possibleConversion && onUpdated && <ResolveAddress c={c} onUpdated={onUpdated} />}
         <p className="text-ink">{owner}</p>
         {c.companyAddress && (
           <p className="text-ink-soft">
@@ -526,6 +589,7 @@ function SideCard({ c, onClose, onAdded }: { c: FreeholdCandidate; onClose: () =
 
 function Filters({ f, set, count, loading, saved, onSave, areas }: { f: Filters; set: (p: Partial<Filters>) => void; count: number; loading: boolean; saved: boolean; onSave: () => void; areas: { code: string; name: string }[] }) {
   const toggle = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
+  const conv = f.mode === "conversions";
   const chip = (on: boolean) =>
     `rounded-full border px-2.5 py-1 text-xs font-medium transition ${on ? "border-ink bg-ink text-white" : "border-paper-line bg-white text-ink-soft hover:border-bronze"}`;
   return (
@@ -543,10 +607,25 @@ function Filters({ f, set, count, loading, saved, onSave, areas }: { f: Filters;
       </div>
 
       <div>
-        <span className="label">Addresses on the freehold (F2): {f.minAddresses}–{f.maxAddresses}</span>
+        <span className="label">Show</span>
+        <div className="flex flex-wrap gap-1.5">
+          <button className={chip(f.mode === "multi")} onClick={() => set({ mode: "multi" })}>Multi-unit freeholds</button>
+          <button className={chip(f.mode === "conversions")} onClick={() => set({ mode: "conversions", minAddresses: Math.max(3, f.minAddresses), maxAddresses: Math.max(3, f.maxAddresses) })}>
+            Possible conversions
+          </button>
+        </div>
+        {conv && (
+          <span className="mt-1 block text-[10px] text-ink-muted">
+            Ordnance Survey lists several addresses here, but there are no EPCs or leases to confirm them — often an uncertified conversion or HMO, sometimes just an annexe or garage record. Check Street View.
+          </span>
+        )}
+      </div>
+
+      <div>
+        <span className="label">{conv ? "OS addresses on the freehold" : "Addresses on the freehold (F2)"}: {f.minAddresses}–{f.maxAddresses}</span>
         <div className="flex items-center gap-2">
-          <input type="range" min={2} max={20} value={f.minAddresses} onChange={(e) => set({ minAddresses: Math.min(Number(e.target.value), f.maxAddresses) })} className="w-full" aria-label="Minimum addresses" />
-          <input type="range" min={2} max={20} value={f.maxAddresses} onChange={(e) => set({ maxAddresses: Math.max(Number(e.target.value), f.minAddresses) })} className="w-full" aria-label="Maximum addresses" />
+          <input type="range" min={conv ? 3 : 2} max={20} value={f.minAddresses} onChange={(e) => set({ minAddresses: Math.min(Number(e.target.value), f.maxAddresses) })} className="w-full" aria-label="Minimum addresses" />
+          <input type="range" min={conv ? 3 : 2} max={20} value={f.maxAddresses} onChange={(e) => set({ maxAddresses: Math.max(Number(e.target.value), f.minAddresses) })} className="w-full" aria-label="Maximum addresses" />
         </div>
       </div>
 
@@ -567,6 +646,7 @@ function Filters({ f, set, count, loading, saved, onSave, areas }: { f: Filters;
         <span className="mt-1 block text-[10px] text-ink-muted">Councils, housing associations and the Crown are always excluded.</span>
       </div>
 
+      {!conv && <>
       <div>
         <span className="label">Use class (F5) — any if none picked</span>
         <div className="flex flex-wrap gap-1.5">
@@ -590,6 +670,7 @@ function Filters({ f, set, count, loading, saved, onSave, areas }: { f: Filters;
           {[["All", 0], ["Medium+", 0.5], ["High", 0.8]].map(([l, v]) => <button key={String(l)} className={chip(f.minConfidence === v)} onClick={() => set({ minConfidence: Number(v) })}>{l}</button>)}
         </div>
       </div>
+      </>}
 
       <div className="flex items-center gap-2 pt-1">
         <button onClick={onSave} className="btn-ghost text-xs">{saved ? "Saved ✓" : "Save search"}</button>
@@ -709,6 +790,10 @@ export function FreeholdMap({ apiKey, configured }: { apiKey: string; configured
   const la = fromTable
     ? { code: fromTable.laCode, name: fromTable.laName, lat: fromTable.lat as number, lng: fromTable.lng as number }
     : RELEASE_1_LAS.find((a) => a.code === f.la) ?? RELEASE_1_LAS[0];
+  // A conversion's address, sale and owner, once resolved (ResolveAddress).
+  const onUpdated = useCallback((c: FreeholdCandidate) => {
+    setFeatures((fs) => fs.map((x) => (x.id === c.id ? { ...x, properties: { ...x.properties, ...c } } : x)));
+  }, []);
   const onAdded = useCallback((id: number, propertyId: string) => {
     setFeatures((fs) => fs.map((x) => (x.id === id ? { ...x, properties: { ...x.properties, pipelinePropertyId: propertyId } } : x)));
   }, []);
@@ -729,11 +814,11 @@ export function FreeholdMap({ apiKey, configured }: { apiKey: string; configured
           {features.slice(0, shown).map(({ id, properties: c }) => (
             <li key={id}>
               <button onClick={() => setSelectedId(id)} className={`flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-paper-warm ${id === selectedId ? "bg-paper-warm" : ""}`}>
-                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: c.pipelinePropertyId ? "#1F3A5F" : colour(c.confidence) }} title={`Confidence ${pct(c.confidence)}`} />
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: dot(c) }} title={c.possibleConversion ? "Possible conversion" : `Confidence ${pct(c.confidence)}`} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm text-ink">{c.sampleAddresses[0] ?? `Freehold ${c.inspireId}`}</span>
+                  <span className="block truncate text-sm text-ink">{title(c)}</span>
                   <span className="block truncate text-[11px] text-ink-muted">
-                    {c.addressCount} addresses · {c.leaseCount} leases · {c.ownerType === "private" ? "private" : c.companyName ?? c.ownerType}
+                    {c.possibleConversion ? <>{c.uprnCount} OS addresses · {c.addressCount} certified</> : <>{c.addressCount} addresses</>} · {c.leaseCount} leases · {c.ownerType === "private" ? "private" : c.companyName ?? c.ownerType}
                     {c.lastSalePrice != null && <> · sold {gbp(c.lastSalePrice)} {year(c.lastSaleDate)}</>}
                   </span>
                 </span>
@@ -786,13 +871,14 @@ export function FreeholdMap({ apiKey, configured }: { apiKey: string; configured
                   <Polygons features={features} selectedId={selectedId} onSelect={setSelectedId} />
                 </GoogleMap>
               </div>
-              <div style={{ height: 560 }}>{selected ? <SideCard c={selected} onClose={() => setSelectedId(null)} onAdded={onAdded} /> : list}</div>
+              <div style={{ height: 560 }}>{selected ? <SideCard c={selected} onClose={() => setSelectedId(null)} onAdded={onAdded} onUpdated={onUpdated} /> : list}</div>
             </div>
             <p className="text-[11px] text-ink-muted">
               <span className="mr-2 inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "#2E7D5B" }} /> high confidence
               <span className="ml-3 mr-2 inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "#C2872B" }} /> medium
               <span className="ml-3 mr-2 inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "#8A8A8A" }} /> low
               <span className="ml-3 mr-2 inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "#1F3A5F" }} /> in Title Split
+              <span className="ml-3 mr-2 inline-block h-2.5 w-2.5 rounded-sm" style={{ background: CONVERSION }} /> possible conversion
             </p>
           </APIProvider>
         ) : (
