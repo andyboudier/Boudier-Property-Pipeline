@@ -86,6 +86,8 @@ const title = (c: FreeholdCandidate) => c.sampleAddresses[0] ?? (c.nearAddress ?
 const pct = (c: number) => `${Math.round(c * 100)}%`;
 const gbp = (n: number) => (n >= 1e6 ? `£${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}m` : `£${Math.round(n / 1000).toLocaleString("en-GB")}k`);
 const year = (iso: string | null) => (iso ? iso.slice(0, 4) : "");
+const monthYear = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { month: "short", year: "numeric" });
+const expired = (iso: string) => new Date(iso).getTime() < Date.now();
 const PPD_TYPE: Record<string, string> = { D: "detached", S: "semi-detached", T: "terraced", F: "flat", O: "other" };
 
 /** An EPC band in its certificate colour. */
@@ -532,6 +534,29 @@ function SideCard({ c, onClose, onAdded, onUpdated }: { c: FreeholdCandidate; on
                 {c.epcBandWorst && c.epcBandWorst !== c.epcBandTypical && <><EpcBadge band={c.epcBandWorst} /> worst</>}
               </p>
               <EpcBar bands={c.epcBands} />
+              {c.epcFirstExpiry && (
+                <p className="text-xs text-ink-soft">
+                  Valid until{" "}
+                  {c.epcLastExpiry && c.epcLastExpiry !== c.epcFirstExpiry ? `${monthYear(c.epcFirstExpiry)} – ${monthYear(c.epcLastExpiry)}` : monthYear(c.epcFirstExpiry)}
+                  {c.epcExpiredCount ? <span className="font-medium text-status-stop"> · {c.epcExpiredCount} of {c.epcUnits.length} expired</span> : " · all current"}
+                </p>
+              )}
+              {c.epcUnits.length > 0 && (
+                <details className="text-xs">
+                  <summary className="cursor-pointer text-ink-muted hover:text-ink">Each unit</summary>
+                  <ul className="mt-1 max-h-32 space-y-0.5 overflow-auto">
+                    {c.epcUnits.map((u, i) => (
+                      <li key={i} className="flex items-center gap-1.5">
+                        <EpcBadge band={u.band} />
+                        <span className="min-w-0 flex-1 truncate text-ink-soft">{u.address}</span>
+                        <span className={`shrink-0 tabular-nums ${expired(u.expires) ? "text-status-stop" : "text-ink-muted"}`} title={`Lodged ${new Date(u.lodged).toLocaleDateString("en-GB")}`}>
+                          {expired(u.expires) ? "expired " : "to "}{monthYear(u.expires)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
             </div>
           ) : (
             <p className="text-xs text-ink-muted">No certificate on the register for these units.</p>
@@ -820,9 +845,10 @@ export function FreeholdMap({ apiKey, configured }: { apiKey: string; configured
                   <span className="block truncate text-[11px] text-ink-muted">
                     {c.possibleConversion ? <>{c.uprnCount} OS addresses · {c.addressCount} certified</> : <>{c.addressCount} addresses</>} · {c.leaseCount} leases · {c.ownerType === "private" ? "private" : c.companyName ?? c.ownerType}
                     {c.lastSalePrice != null && <> · sold {gbp(c.lastSalePrice)} {year(c.lastSaleDate)}</>}
+                    {!!c.epcExpiredCount && <span className="text-status-stop"> · {c.epcExpiredCount} EPC expired</span>}
                   </span>
                 </span>
-                <EpcBadge band={c.epcBandTypical} title={c.epcBandTypical ? `EPC ${c.epcBandTypical} typical${c.epcBandWorst && c.epcBandWorst !== c.epcBandTypical ? `, worst ${c.epcBandWorst}` : ""}` : undefined} />
+                <EpcBadge band={c.epcBandTypical} title={c.epcBandTypical ? `EPC ${c.epcBandTypical} typical${c.epcBandWorst && c.epcBandWorst !== c.epcBandTypical ? `, worst ${c.epcBandWorst}` : ""}${c.epcExpiredCount ? ` · ${c.epcExpiredCount} expired` : c.epcFirstExpiry ? ` · valid to ${monthYear(c.epcFirstExpiry)}` : ""}` : undefined} />
               </button>
             </li>
           ))}

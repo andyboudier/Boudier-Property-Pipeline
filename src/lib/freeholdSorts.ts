@@ -3,6 +3,7 @@ export const FREEHOLD_SORTS = {
   confidence: "Confidence",
   addresses: "Most addresses",
   "epc-worst": "Worst EPC first",
+  "epc-expiry": "EPC expiring soonest",
   "sale-recent": "Most recently sold",
   "sale-price": "Highest last sale",
 } as const;
