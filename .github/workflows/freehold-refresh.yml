@@ -22,6 +22,12 @@ on:
         required: false
         default: ""
 
+# All builds share the staging tables, so two at once would corrupt each
+# other. Queue them: a second import waits for the first to finish.
+concurrency:
+  group: freehold-etl
+  cancel-in-progress: false
+
 jobs:
   refresh:
     runs-on: ubuntu-latest
@@ -49,9 +55,17 @@ jobs:
         working-directory: etl
         run: uv sync
       - name: Build each authority
+        env:
+          # Passed through the environment, never interpolated into the
+          # script, and checked against the ONS district code format — the
+          # app's Import button supplies this value.
+          REQUESTED: ${{ github.event.inputs.authorities }}
         run: |
-          LAS="${{ github.event.inputs.authorities }}"
+          LAS="$REQUESTED"
           [ -n "$LAS" ] || LAS="E06000038 E06000037 E06000041 E06000036 E06000040 E06000039"
+          for la in $LAS; do
+            [[ "$la" =~ ^[EW][0-9]{8}$ ]] || { echo "::error::Not an ONS district code: $la"; exit 1; }
+          done
           for la in $LAS; do
             echo "::group::$la"
             uv run --project etl python -m etl.run --la "$la" --dest etl/data

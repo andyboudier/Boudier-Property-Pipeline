@@ -19,11 +19,37 @@ LA_BBOX: dict[str, tuple[float, float, float, float]] = {
 }
 
 
+PDG = "https://www.planning.data.gov.uk/entity.json"
+UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36"
+
+
+def official(la_code: str) -> tuple[str, str] | None:
+    """(name, boundary WKT) for any council in England and Wales, from the
+    planning.data.gov.uk local-authority-district dataset. The name is also
+    the one the EPC API's council[] filter accepts — verified for awkward
+    cases such as "Bristol, City of" and "Kingston upon Hull, City of"."""
+    import httpx
+
+    r = httpx.get(PDG, params={"dataset": "local-authority-district", "reference": la_code},
+                  headers={"User-Agent": UA}, timeout=60, follow_redirects=True)
+    if r.status_code != 200:
+        return None
+    ents = r.json().get("entities") or []
+    if not ents or not ents[0].get("geometry"):
+        return None
+    return ents[0]["name"], ents[0]["geometry"]
+
+
 def bbox_for(la_code: str) -> tuple[float, float, float, float]:
-    try:
+    """The table above for release-1 councils; any other council's box comes
+    from its official boundary, so an on-demand import works anywhere."""
+    if la_code in LA_BBOX:
         return LA_BBOX[la_code]
-    except KeyError:
-        raise RuntimeError(
-            f"No bounding box for {la_code}. Add one to etl/la_bbox.py, or the "
-            f"OS Open UPRN load would have to ingest all of Great Britain."
-        ) from None
+    got = official(la_code)
+    if not got:
+        raise RuntimeError(f"No boundary for {la_code} on planning.data.gov.uk — is it a valid ONS district code?")
+    import re
+
+    pts = [(float(x), float(y)) for x, y in re.findall(r"(-?\d+\.\d+)\s+(-?\d+\.\d+)", got[1])]
+    xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+    return min(xs), min(ys), max(xs), max(ys)

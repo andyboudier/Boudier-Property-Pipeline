@@ -222,3 +222,106 @@ export function toCsv(rows: FreeholdCandidate[]): string {
   };
   return [cols.map(([h]) => h).join(","), ...rows.map((r) => cols.map(([, fn]) => esc(fn(r))).join(","))].join("\n");
 }
+
+// ── Areas and on-demand imports ──────────────────────────────────────────────
+// Search a place, find its council, and if there is no data yet, start the
+// refresh workflow for that council. The workflow's ETL writes its progress
+// back to area_imports, which is what the map watches.
+
+export type ImportStatus = "queued" | "running" | "done" | "failed";
+
+export interface Area {
+  laCode: string;
+  laName: string;
+  lat: number | null;
+  lng: number | null;
+  status: ImportStatus;
+  requestedAt: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  candidates: number | null;
+  targets: number | null;
+  message: string | null;
+}
+
+const REPO = "andyboudier/Boudier-Property-Pipeline";
+const WORKFLOW = "freehold-refresh.yml";
+export const WORKFLOW_RUNS_URL = `https://github.com/${REPO}/actions/workflows/${WORKFLOW}`;
+const ONS_DISTRICT = /^[EW]\d{8}$/;
+
+function toArea(r: Row): Area {
+  const s = (v: unknown) => (typeof v === "string" ? v : null);
+  const num = (v: unknown) => (v == null ? null : Number(v));
+  return {
+    laCode: String(r.la_code), laName: String(r.la_name), lat: num(r.lat), lng: num(r.lng),
+    status: (s(r.status) as ImportStatus) ?? "queued",
+    requestedAt: s(r.requested_at), startedAt: s(r.started_at), finishedAt: s(r.finished_at),
+    candidates: num(r.candidates), targets: num(r.targets), message: s(r.message),
+  };
+}
+
+export async function listAreas(): Promise<Area[]> {
+  const db = await getClient();
+  if (!db) return [];
+  const { data, error } = await db.from("area_imports").select("*").order("la_name");
+  if (error) throw new Error(`areas query failed: ${error.message}`);
+  return (data ?? []).map((r) => toArea(r as Row));
+}
+
+export async function getArea(laCode: string): Promise<Area | null> {
+  const db = await getClient();
+  if (!db) return null;
+  const { data } = await db.from("area_imports").select("*").eq("la_code", laCode).maybeSingle();
+  return data ? toArea(data as Row) : null;
+}
+
+/** The council a point falls in, from planning.data.gov.uk (OGL, no key). */
+export async function councilAt(lat: number, lng: number): Promise<{ laCode: string; laName: string } | null> {
+  const q = new URLSearchParams({ dataset: "local-authority-district", longitude: String(lng), latitude: String(lat), geometry_relation: "intersects", limit: "1" });
+  const r = await fetch(`https://www.planning.data.gov.uk/entity.json?${q}`, { next: { revalidate: 86_400 } });
+  if (!r.ok) return null;
+  const e = ((await r.json()) as { entities?: { reference?: string; name?: string }[] }).entities?.[0];
+  return e?.reference && e.name ? { laCode: e.reference, laName: e.name } : null;
+}
+
+export function isImportConfigured() {
+  return !!process.env.GITHUB_DISPATCH_TOKEN;
+}
+
+/**
+ * Record an import request and start the refresh workflow for one council.
+ * Imports queue on GitHub (the workflow's concurrency group), because every
+ * build shares the staging tables.
+ */
+export async function requestImport(laCode: string, laName: string, lat: number | null, lng: number | null): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!ONS_DISTRICT.test(laCode)) return { ok: false, error: "Not an ONS district code." };
+  const db = await getClient();
+  if (!db) return { ok: false, error: "The freehold data store is not configured." };
+  const token = process.env.GITHUB_DISPATCH_TOKEN;
+  if (!token) {
+    return { ok: false, error: "Imports aren't set up yet: GITHUB_DISPATCH_TOKEN is missing in Vercel." };
+  }
+
+  const { error } = await db.from("area_imports").upsert(
+    { la_code: laCode, la_name: laName, lat, lng, status: "queued", requested_at: new Date().toISOString(), started_at: null, finished_at: null, message: null },
+    { onConflict: "la_code" },
+  );
+  if (error) return { ok: false, error: `Could not record the request: ${error.message}` };
+
+  const r = await fetch(`https://api.github.com/repos/${REPO}/actions/workflows/${WORKFLOW}/dispatches`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ ref: "main", inputs: { authorities: laCode } }),
+  });
+  if (r.status !== 204) {
+    const detail = (await r.text()).slice(0, 200);
+    await db.from("area_imports").update({ status: "failed", message: `GitHub refused the dispatch (${r.status}): ${detail}` }).eq("la_code", laCode);
+    return { ok: false, error: `GitHub refused to start the import (HTTP ${r.status}). Check the token's Actions permission.` };
+  }
+  return { ok: true };
+}

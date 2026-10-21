@@ -112,7 +112,13 @@ def fetch(la_code: str, dest: str) -> str:
     require_licence(LICENCE_ENV, DATASET, SOURCE_URL)
     council = EPC_COUNCIL.get(la_code)
     if not council:
-        raise EpcError(f"No EPC council name for {la_code} — add it to EPC_COUNCIL in etl/sources/epc.py")
+        # Any other council: its official name, which the EPC API accepts as-is.
+        from ..la_bbox import official
+
+        got = official(la_code)
+        if not got:
+            raise EpcError(f"No council name for {la_code} on planning.data.gov.uk")
+        council = got[0]
 
     folder = Path(dest) / "epc"
     folder.mkdir(parents=True, exist_ok=True)

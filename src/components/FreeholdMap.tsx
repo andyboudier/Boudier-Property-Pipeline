@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import Link from "next/link";
 // `Map` is aliased: the component would otherwise shadow JavaScript's Map.
 import { APIProvider, Map as GoogleMap, useMap, useMapsLibrary } from "@vis.gl/react-google-maps";
-import type { FreeholdCandidate, OwnerType } from "@/lib/freeholds";
-import { actionAddFreeholdToPipeline } from "@/app/actions";
+import type { Area, FreeholdCandidate, OwnerType } from "@/lib/freeholds";
+import { actionAddFreeholdToPipeline, actionRequestAreaImport } from "@/app/actions";
 
 // Phase 2 (plan §6): the F1–F6 filter panel, polygons coloured by confidence,
 // a side card, CSV export and Add to Pipeline. Polygons are drawn with Google
@@ -74,7 +74,7 @@ const pct = (c: number) => `${Math.round(c * 100)}%`;
 
 // ── Map ──────────────────────────────────────────────────────────────────────
 
-function PlaceSearch() {
+function PlaceSearch({ onPlace }: { onPlace?: (lat: number, lng: number) => void }) {
   const map = useMap();
   const places = useMapsLibrary("places");
   const host = useRef<HTMLDivElement>(null);
@@ -94,6 +94,7 @@ function PlaceSearch() {
       const place = e.placePrediction ? e.placePrediction.toPlace() : e.place;
       if (!place) return;
       await place.fetchFields({ fields: ["location", "viewport"] });
+      if (place.location) onPlace?.(place.location.lat(), place.location.lng());
       if (place.viewport) map.fitBounds(place.viewport);
       else if (place.location) {
         map.panTo(place.location);
@@ -103,7 +104,7 @@ function PlaceSearch() {
     el.addEventListener("gmp-select", onSelect);
     el.addEventListener("gmp-placeselect", onSelect);
     return () => el.remove();
-  }, [places, map]);
+  }, [places, map, onPlace]);
   return (
     <div className="min-w-0 flex-1">
       <div ref={host} aria-label="Search for an address, street or postcode" />
@@ -262,6 +263,70 @@ function Overlays({ enabled, onStatus }: { enabled: string[]; onStatus: (msg: st
   return null;
 }
 
+// ── Area banner: search a place, import its council if there's no data ───────
+
+interface Lookup {
+  lat: number;
+  lng: number;
+  council: { laCode: string; laName: string } | null;
+  area: Area | null;
+  importConfigured?: boolean;
+  runsUrl?: string;
+  message?: string;
+}
+
+const minutesSince = (iso: string | null) => (iso ? Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000)) : 0);
+
+function AreaBanner({ lookup, currentLa, onShow, onImport, busy, error }: {
+  lookup: Lookup; currentLa: string; onShow: (code: string) => void; onImport: () => void; busy: boolean; error: string | null;
+}) {
+  const box = "card flex flex-wrap items-center gap-3 p-3 text-sm";
+  if (!lookup.council) return <div className={box}><span className="text-ink-muted">{lookup.message ?? "That place isn't in a council we can import."}</span></div>;
+  const { laCode, laName } = lookup.council;
+  const a = lookup.area;
+
+  if (a?.status === "done") {
+    if (laCode === currentLa) return null;
+    return (
+      <div className={box}>
+        <span className="text-ink"><span className="font-medium">{laName}</span> — {(a.targets ?? 0).toLocaleString("en-GB")} on the approach list.</span>
+        <button onClick={() => onShow(laCode)} className="btn-primary ml-auto px-3 py-1 text-xs">Show {laName}</button>
+      </div>
+    );
+  }
+  if (a?.status === "queued" || a?.status === "running") {
+    const queuedMins = minutesSince(a.requestedAt);
+    const stuck = a.status === "queued" && queuedMins >= 15;
+    return (
+      <div className={box}>
+        <span className="h-2 w-2 animate-pulse rounded-full bg-bronze" />
+        <span className="text-ink">
+          Importing <span className="font-medium">{laName}</span> —{" "}
+          {a.status === "running" ? `running for ${minutesSince(a.startedAt)} min` : `queued ${queuedMins} min ago`}. Usually 15–30 minutes; this updates by itself.
+        </span>
+        {stuck && (
+          <span className="w-full text-xs text-status-stop">
+            It hasn&apos;t started after {queuedMins} minutes — the job is probably missing its GitHub secrets.{" "}
+            <a href={lookup.runsUrl} target="_blank" rel="noreferrer" className="underline">Open the job ↗</a>
+          </span>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className={box}>
+      <span className="text-ink">
+        {a?.status === "failed" ? <>The last import of <span className="font-medium">{laName}</span> failed{a.message ? `: ${a.message}` : "."}</> : <>No freehold data for <span className="font-medium">{laName}</span> yet.</>}
+      </span>
+      <button onClick={onImport} disabled={busy || !lookup.importConfigured} className="btn-primary ml-auto px-3 py-1 text-xs disabled:opacity-50">
+        {busy ? "Starting…" : a?.status === "failed" ? `Retry ${laName}` : `Import ${laName}`}
+      </button>
+      {!lookup.importConfigured && <span className="w-full text-xs text-ink-muted">Imports need a GitHub token in Vercel (GITHUB_DISPATCH_TOKEN) — see the setup notes.</span>}
+      {error && <span className="w-full text-xs text-status-stop">{error}</span>}
+    </div>
+  );
+}
+
 // ── Side card ────────────────────────────────────────────────────────────────
 
 function SideCard({ c, onClose, onAdded }: { c: FreeholdCandidate; onClose: () => void; onAdded: (id: number, propertyId: string) => void }) {
@@ -353,7 +418,7 @@ function SideCard({ c, onClose, onAdded }: { c: FreeholdCandidate; onClose: () =
 
 // ── Filter panel ─────────────────────────────────────────────────────────────
 
-function Filters({ f, set, count, loading, saved, onSave }: { f: Filters; set: (p: Partial<Filters>) => void; count: number; loading: boolean; saved: boolean; onSave: () => void }) {
+function Filters({ f, set, count, loading, saved, onSave, areas }: { f: Filters; set: (p: Partial<Filters>) => void; count: number; loading: boolean; saved: boolean; onSave: () => void; areas: { code: string; name: string }[] }) {
   const toggle = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
   const chip = (on: boolean) =>
     `rounded-full border px-2.5 py-1 text-xs font-medium transition ${on ? "border-ink bg-ink text-white" : "border-paper-line bg-white text-ink-soft hover:border-bronze"}`;
@@ -367,7 +432,7 @@ function Filters({ f, set, count, loading, saved, onSave }: { f: Filters; set: (
       <div>
         <span className="label">Area</span>
         <div className="flex flex-wrap gap-1.5">
-          {RELEASE_1_LAS.map((a) => <button key={a.code} className={chip(f.la === a.code)} onClick={() => set({ la: a.code })}>{a.name}</button>)}
+          {areas.map((a) => <button key={a.code} className={chip(f.la === a.code)} onClick={() => set({ la: a.code })}>{a.name}</button>)}
         </div>
       </div>
 
@@ -438,6 +503,52 @@ export function FreeholdMap({ apiKey, configured }: { apiKey: string; configured
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [saved, setSaved] = useState(false);
   const [overlays, setOverlays] = useState<string[]>([]);
+  const [areaRows, setAreaRows] = useState<Area[]>([]);
+  const [lookup, setLookup] = useState<Lookup | null>(null);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+
+  const loadAreas = useCallback(async () => {
+    try {
+      const j = (await (await fetch("/api/freeholds/areas", { cache: "no-store" })).json()) as { areas?: Area[] };
+      setAreaRows(j.areas ?? []);
+    } catch { /* keep what we have */ }
+  }, []);
+  useEffect(() => { if (configured) loadAreas(); }, [configured, loadAreas]);
+
+  const onPlace = useCallback(async (lat: number, lng: number) => {
+    setImportError(null);
+    try {
+      const j = await (await fetch(`/api/freeholds/areas?lat=${lat}&lng=${lng}`, { cache: "no-store" })).json();
+      setLookup({ lat, lng, ...j });
+    } catch { setLookup(null); }
+  }, []);
+
+  // While an import is queued or running, check on it every 30 seconds.
+  const pending = lookup?.area?.status === "queued" || lookup?.area?.status === "running";
+  const pendingCode = pending ? lookup?.council?.laCode : null;
+  useEffect(() => {
+    if (!pendingCode) return;
+    const t = setInterval(async () => {
+      try {
+        const j = (await (await fetch(`/api/freeholds/areas?la=${pendingCode}`, { cache: "no-store" })).json()) as { area: Area | null };
+        setLookup((cur) => (cur ? { ...cur, area: j.area } : cur));
+        if (j.area?.status === "done") loadAreas();
+      } catch { /* try again next tick */ }
+    }, 30_000);
+    return () => clearInterval(t);
+  }, [pendingCode, loadAreas]);
+
+  const startImport = async () => {
+    if (!lookup?.council) return;
+    setImportBusy(true);
+    setImportError(null);
+    const r = await actionRequestAreaImport(lookup.council.laCode, lookup.council.laName, lookup.lat, lookup.lng);
+    setImportBusy(false);
+    if (!r.ok) { setImportError(r.error); return; }
+    const now = new Date().toISOString();
+    setLookup((cur) => cur && cur.council ? { ...cur, area: { laCode: cur.council.laCode, laName: cur.council.laName, lat: cur.lat, lng: cur.lng, status: "queued", requestedAt: now, startedAt: null, finishedAt: null, candidates: null, targets: null, message: null } } : cur);
+  };
   const [overlayMsg, setOverlayMsg] = useState<string | null>(null);
   const set = useCallback((p: Partial<Filters>) => {
     setF((s) => ({ ...s, ...p }));
@@ -476,7 +587,12 @@ export function FreeholdMap({ apiKey, configured }: { apiKey: string; configured
 
   const byId = useMemo(() => new Map(features.map((x) => [x.id, x.properties])), [features]);
   const selected = selectedId != null ? byId.get(selectedId) ?? null : null;
-  const la = RELEASE_1_LAS.find((a) => a.code === f.la) ?? RELEASE_1_LAS[0];
+  const withData = areaRows.filter((a) => a.status === "done" || (a.candidates ?? 0) > 0);
+  const chips = withData.length ? withData.map((a) => ({ code: a.laCode, name: a.laName })) : RELEASE_1_LAS.map((a) => ({ code: a.code, name: a.name }));
+  const fromTable = areaRows.find((a) => a.laCode === f.la && a.lat != null && a.lng != null);
+  const la = fromTable
+    ? { code: fromTable.laCode, name: fromTable.laName, lat: fromTable.lat as number, lng: fromTable.lng as number }
+    : RELEASE_1_LAS.find((a) => a.code === f.la) ?? RELEASE_1_LAS[0];
   const onAdded = useCallback((id: number, propertyId: string) => {
     setFeatures((fs) => fs.map((x) => (x.id === id ? { ...x, properties: { ...x.properties, pipelinePropertyId: propertyId } } : x)));
   }, []);
@@ -506,11 +622,15 @@ export function FreeholdMap({ apiKey, configured }: { apiKey: string; configured
 
   return (
     <div className="grid gap-4 lg:grid-cols-[300px,1fr]">
-      <Filters f={f} set={set} count={features.length} loading={loading} saved={saved} onSave={save} />
+      <Filters f={f} set={set} count={features.length} loading={loading} saved={saved} onSave={save} areas={chips} />
       <div className="space-y-3">
         {apiKey ? (
           <APIProvider apiKey={apiKey}>
-            <div className="flex items-center gap-2"><PlaceSearch /></div>
+            <div className="flex items-center gap-2"><PlaceSearch onPlace={onPlace} /></div>
+            {lookup && (
+              <AreaBanner lookup={lookup} currentLa={f.la} busy={importBusy} error={importError} onImport={startImport}
+                onShow={(code) => { set({ la: code }); setLookup(null); }} />
+            )}
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="label mb-0">Overlays</span>
               {OVERLAYS.map((o) => {

@@ -29,6 +29,32 @@ PIPELINE = [inspire, os_uprn, epc, leases, ccod, ocod, voa, price_paid]
 OPTIONAL = {voa, price_paid}
 
 
+def report(la_code: str, status: str, **fields) -> None:
+    """Record progress on the area_imports row the app watches. Best effort:
+    a failure to report must never fail the build itself."""
+    try:
+        from .la_bbox import official
+
+        sets = ["status = %(status)s"]
+        if status == "running":
+            sets.append("started_at = now(), finished_at = null, message = null")
+        if status in ("done", "failed"):
+            sets.append("finished_at = now()")
+        for k in ("candidates", "targets", "message"):
+            if k in fields:
+                sets.append(f"{k} = %({k})s")
+        params = {"code": la_code, "status": status, **fields}
+        with connect() as conn, conn.cursor() as cur:
+            cur.execute("select 1 from area_imports where la_code = %(code)s", params)
+            if not cur.fetchone():
+                got = official(la_code)
+                cur.execute("insert into area_imports (la_code, la_name) values (%s, %s)", (la_code, got[0] if got else la_code))
+            cur.execute(f"update area_imports set {', '.join(sets)} where la_code = %(code)s", params)
+            conn.commit()
+    except Exception as e:
+        print(f"  (could not report status: {e})")
+
+
 def main() -> int:
     # Credentials and licence gates live in the app's .env.local, one level up.
     for env_path in (Path(".env.local"), Path("..") / ".env.local", Path(__file__).parent.parent / ".env.local"):
@@ -60,6 +86,18 @@ def main() -> int:
         return 0 if ready else 1
 
     print(f"Building freehold_candidates for {args.la}\n")
+    report(args.la, "running")
+    try:
+        code = _build(args)
+    except Exception as e:
+        report(args.la, "failed", message=f"{type(e).__name__}: {str(e)[:300]}")
+        raise
+    if code != 0:
+        report(args.la, "failed", message="stopped — see the workflow log")
+    return code
+
+
+def _build(args) -> int:
 
     # 1. Download everything first, with no database connection open. A cold
     #    INSPIRE pull takes 10-20 minutes, and the Supabase pooler closes an
@@ -92,6 +130,12 @@ def main() -> int:
         print("\n  deriving candidates…")
         made = build_candidates(conn, args.la)
         print(f"  {made:,} freehold candidates written")
+        with conn.cursor() as cur:
+            cur.execute("""select count(*) from freehold_candidates where la_code = %s and address_count between 2 and 20
+                           and lease_count = 0 and epc_uprn_count > 2 and owner_type in ('private','company','overseas')""", (args.la,))
+            targets = cur.fetchone()[0]
+        print(f"  {targets:,} on the default approach list")
+    report(args.la, "done", candidates=made, targets=targets)
     return 0
 
 

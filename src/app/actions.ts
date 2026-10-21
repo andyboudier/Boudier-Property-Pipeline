@@ -505,7 +505,8 @@ export async function actionAddFreeholdToPipeline(candidateId: number) {
   if (!c) return { ok: false as const, error: "Candidate not found." };
   if (c.pipelinePropertyId) return { ok: true as const, propertyId: c.pipelinePropertyId, already: true };
 
-  const la = LA_NAMES[c.laCode] ?? { town: "", lpa: "" };
+  const area = LA_NAMES[c.laCode] ? null : await (await import("@/lib/freeholds")).getArea(c.laCode);
+  const la = LA_NAMES[c.laCode] ?? { town: area?.laName ?? "", lpa: area?.laName ?? "" };
   const name = c.sampleAddresses[0] || `Freehold ${c.inspireId}`;
   const owner =
     c.ownerType === "private"
@@ -592,4 +593,12 @@ export async function actionSetTitleSplitStage(propertyId: string, stage: TitleS
   revalidatePath("/title-split");
   revalidatePath(`/property/${propertyId}`);
   return { ok: true as const };
+}
+
+/** Start an on-demand import for a council found by searching the map. */
+export async function actionRequestAreaImport(laCode: string, laName: string, lat: number | null, lng: number | null) {
+  const { requestImport } = await import("@/lib/freeholds");
+  const r = await requestImport(laCode, laName, lat, lng);
+  revalidatePath("/freeholds");
+  return r;
 }
