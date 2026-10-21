@@ -36,19 +36,28 @@ happen by accident. See plan §1 and §8.
 | `sources/os_uprn.py` | OS Open UPRN | OS Data Hub key | `OS_LICENCE_ACCEPTED` |
 | `sources/leases.py` | HMLR Registered Leases | none (licence choice) | `HMLR_LICENCE_ACCEPTED` |
 | `sources/ccod.py` | HMLR CCOD / OCOD (company + overseas owners) | account | `HMLR_LICENCE_ACCEPTED` |
-| `sources/epc.py` | EPC Open Data (domestic + non-domestic) — **service moved, see below** | account | `EPC_LICENCE_ACCEPTED` |
+| `sources/epc.py` | EPC Open Data (domestic + non-domestic) — **via the API, automatic** | `EPC_API_KEY` | `EPC_LICENCE_ACCEPTED` |
 | `sources/voa.py` | VOA non-domestic rating list | none | `VOA_LICENCE_ACCEPTED` |
 | `sources/price_paid.py` | HMLR Price Paid + TUID↔UPRN | none | `HMLR_LICENCE_ACCEPTED` |
 | `sources/planning_data.py` | planning.data.gov.uk constraints | **none — OGL, open** | none |
 
-### EPC moved
+### EPC: the API, not the bulk file
 
-The plan (§3) points at `epc.opendatacommunities.org`. That now redirects to
-**get-energy-performance-data.communities.gov.uk**, and the old
-`/api/v1/domestic/search` path returns 404. Use the new service's "Download
-files" option and filter to one local authority — bulk CSV is the right shape
-for an ETL regardless, and avoids paginating an API for tens of thousands of
-certificates.
+The plan (§3) points at `epc.opendatacommunities.org`; the service moved to
+**get-energy-performance-data.communities.gov.uk**. Its API is documented at
+`/api-technical-documentation` (OAS saved to `docs/epc-api-openapi.yml`) and
+verified live: base `https://api.get-energy-performance-data.communities.gov.uk`,
+`Authorization: Bearer <EPC_API_KEY>`, `GET /api/domestic/search` and
+`/api/non-domestic/search` with `council[]=Reading&page_size=5000&current_page=N`.
+
+Reading is 92,020 domestic + 5,350 non-domestic certificates — 21 requests,
+about 30 seconds. The alternative, the full-load zip, is 8.3 GB for all of
+England and Wales, so the search API wins for an authority-sized pull.
+
+The search summary carries no property type, so flat/house/bungalow is
+**inferred from the address line** and the domestic/non-domestic origin.
+Exact types would mean streaming the full-load CSV on its `local_authority`
+column — an upgrade for later, if F5 ever needs it.
 
 `planning_data.py` is the one source with no key and no gate. It mirrors
 `src/lib/planningData.ts` in the app, which is also what the GoPlanner

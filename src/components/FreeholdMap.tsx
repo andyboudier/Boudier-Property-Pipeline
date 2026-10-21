@@ -12,58 +12,73 @@ export const RELEASE_1_LAS: { code: string; name: string; lat: number; lng: numb
   { code: "E06000038", name: "Reading", lat: 51.4543, lng: -0.9737 },
   { code: "E06000037", name: "West Berkshire", lat: 51.4014, lng: -1.3231 },
   { code: "E06000041", name: "Wokingham", lat: 51.4112, lng: -0.8356 },
-  { code: "E06000036", name: "Bracknell Forest", lat: 51.4140, lng: -0.7520 },
+  { code: "E06000036", name: "Bracknell Forest", lat: 51.414, lng: -0.752 },
   { code: "E06000040", name: "Windsor & Maidenhead", lat: 51.5213, lng: -0.7195 },
-  { code: "E06000039", name: "Slough", lat: 51.5105, lng: -0.5950 },
+  { code: "E06000039", name: "Slough", lat: 51.5105, lng: -0.595 },
 ];
 
-/**
- * Address / place search. Uses the Places library, so the key needs the Places
- * API enabled as well as Maps JavaScript — the input says so if it is missing
- * rather than sitting there inert.
- */
+// Places API (New). The legacy `Autocomplete` widget is not offered on new
+// Google Cloud projects, so this uses `PlaceAutocompleteElement` — a web
+// component that renders its own input and emits a selection event. The
+// installed Maps typings may predate it, hence the narrow local types.
+type PlaceLike = {
+  fetchFields: (o: { fields: string[] }) => Promise<unknown>;
+  location?: google.maps.LatLng | null;
+  viewport?: google.maps.LatLngBounds | null;
+};
+type SelectEvent = Event & { placePrediction?: { toPlace: () => PlaceLike }; place?: PlaceLike };
+type PlacesWithElement = { PlaceAutocompleteElement?: new (o: Record<string, unknown>) => HTMLElement };
+
 function PlaceSearch() {
   const map = useMap();
   const places = useMapsLibrary("places");
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [failed, setFailed] = useState(false);
+  const host = useRef<HTMLDivElement>(null);
+  const [problem, setProblem] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!places || !inputRef.current || !map) return;
-    let listener: google.maps.MapsEventListener | undefined;
-    try {
-      const ac = new places.Autocomplete(inputRef.current, {
-        componentRestrictions: { country: "gb" }, // UK land data only
-        fields: ["geometry", "formatted_address", "name"],
-      });
-      listener = ac.addListener("place_changed", () => {
-        const place = ac.getPlace();
-        const loc = place.geometry?.location;
-        if (!loc) return;
-        // Fit the whole place when it has bounds (a town), otherwise zoom in
-        // close enough to read individual buildings.
-        if (place.geometry?.viewport) map.fitBounds(place.geometry.viewport);
-        else {
-          map.panTo(loc);
-          map.setZoom(18);
-        }
-      });
-    } catch {
-      setFailed(true);
+    if (!places || !map || !host.current) return;
+    const Ctor = (places as unknown as PlacesWithElement).PlaceAutocompleteElement;
+    if (!Ctor) {
+      setProblem("Search needs the Places API (New) enabled on the Maps key.");
+      return;
     }
-    return () => listener?.remove();
+    let el: HTMLElement;
+    try {
+      el = new Ctor({ includedRegionCodes: ["gb"] }); // UK land data only
+    } catch (e) {
+      setProblem(`Search could not start: ${(e as Error).message}`);
+      return;
+    }
+    el.style.width = "100%";
+    host.current.replaceChildren(el);
+
+    const onSelect = async (ev: Event) => {
+      const e = ev as SelectEvent;
+      // Newer builds fire `gmp-select` with a prediction; older ones fire
+      // `gmp-placeselect` with the place itself. Handle both.
+      const place = e.placePrediction ? e.placePrediction.toPlace() : e.place;
+      if (!place) return;
+      await place.fetchFields({ fields: ["location", "viewport", "formattedAddress"] });
+      // A town gets its whole extent; a single address zooms to building level.
+      if (place.viewport) map.fitBounds(place.viewport);
+      else if (place.location) {
+        map.panTo(place.location);
+        map.setZoom(18);
+      }
+    };
+    el.addEventListener("gmp-select", onSelect);
+    el.addEventListener("gmp-placeselect", onSelect);
+    return () => {
+      el.removeEventListener("gmp-select", onSelect);
+      el.removeEventListener("gmp-placeselect", onSelect);
+      el.remove();
+    };
   }, [places, map]);
 
   return (
     <div className="min-w-0 flex-1">
-      <input
-        ref={inputRef}
-        type="text"
-        placeholder={failed ? "Search unavailable — enable the Places API" : "Search an address, street or postcode…"}
-        disabled={failed}
-        className="field w-full"
-        aria-label="Search for a place"
-      />
+      <div ref={host} aria-label="Search for an address, street or postcode" />
+      {problem && <p className="mt-1 text-xs text-status-stop">{problem}</p>}
     </div>
   );
 }
