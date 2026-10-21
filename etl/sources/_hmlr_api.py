@@ -52,8 +52,10 @@ def _headers() -> dict:
 
 
 def _get(path: str) -> dict:
+    from ..net import get
+
     with httpx.Client(timeout=60.0, follow_redirects=True) as c:
-        r = c.get(f"{BASE}{path}", headers=_headers())
+        r = get(c, f"{BASE}{path}", headers=_headers())
     if r.status_code == 403 and "cloudflare" in r.text.lower():
         raise HmlrError(
             "Blocked by Cloudflare (error 1010), not by your API key — the request "
@@ -90,16 +92,7 @@ def download(dataset: str, file_name: str, dest: Path) -> str:
         raise HmlrError(f"{dataset}/{file_name}: no download_url returned")
 
     # The signed S3 URL carries its own auth — do not send the API key to it.
-    with httpx.stream("GET", url, timeout=300.0, follow_redirects=True) as r:
-        r.raise_for_status()
-        total = int(r.headers.get("content-length") or 0)
-        done = 0
-        with open(target, "wb") as fh:
-            for chunk in r.iter_bytes(1 << 20):
-                fh.write(chunk)
-                done += len(chunk)
-                if total:
-                    print(f"\r  {dataset} {done / 1e6:,.0f}/{total / 1e6:,.0f} MB", end="", flush=True)
-        if total:
-            print()
+    from ..net import download as stream_to
+
+    stream_to(url, target, progress=dataset)
     return str(target)

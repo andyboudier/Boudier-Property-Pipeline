@@ -30,8 +30,10 @@ def official(la_code: str) -> tuple[str, str] | None:
     cases such as "Bristol, City of" and "Kingston upon Hull, City of"."""
     import httpx
 
-    r = httpx.get(PDG, params={"dataset": "local-authority-district", "reference": la_code},
-                  headers={"User-Agent": UA}, timeout=60, follow_redirects=True)
+    from .net import get
+
+    with httpx.Client(headers={"User-Agent": UA}, timeout=60, follow_redirects=True) as c:
+        r = get(c, PDG, params={"dataset": "local-authority-district", "reference": la_code})
     if r.status_code != 200:
         return None
     ents = r.json().get("entities") or []

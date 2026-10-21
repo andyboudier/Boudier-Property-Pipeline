@@ -79,23 +79,19 @@ def _key() -> str:
 
 
 def _page(client: httpx.Client, kind: str, council: str, page: int) -> dict:
-    """One page of search results, with back-off on rate limiting."""
-    url = f"{BASE}/api/{kind}/search"
-    params = {"council[]": council, "page_size": PAGE_SIZE, "current_page": page}
-    for attempt in range(5):
-        r = client.get(url, params=params)
-        if r.status_code == 429:
-            time.sleep(5 * (attempt + 1))
-            continue
-        if r.status_code == 404:  # the API's way of saying "no records"
-            return {"data": [], "pagination": {"totalPages": 0}}
-        if r.status_code != 200:
-            raise EpcError(f"{kind} search page {page}: HTTP {r.status_code} {r.text[:160]}")
-        body = r.json()
-        if isinstance(body.get("data"), dict) and "error" in body["data"]:
-            raise EpcError(f"{kind} search page {page}: {body['data']['error']}")
-        return body
-    raise EpcError(f"{kind} search page {page}: rate limited five times, giving up")
+    """One page of search results. Timeouts, dropped connections, 429 and 5xx
+    are retried with backoff (see etl/net.py)."""
+    from ..net import get
+
+    r = get(client, f"{BASE}/api/{kind}/search", params={"council[]": council, "page_size": PAGE_SIZE, "current_page": page})
+    if r.status_code == 404:  # the API's way of saying "no records"
+        return {"data": [], "pagination": {"totalPages": 0}}
+    if r.status_code != 200:
+        raise EpcError(f"{kind} search page {page}: HTTP {r.status_code} {r.text[:160]}")
+    body = r.json()
+    if isinstance(body.get("data"), dict) and "error" in body["data"]:
+        raise EpcError(f"{kind} search page {page}: {body['data']['error']}")
+    return body
 
 
 def _fresh(path: Path) -> bool:

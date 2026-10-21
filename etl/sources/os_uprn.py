@@ -36,17 +36,9 @@ def fetch(la_code: str, dest: str) -> str:
     if target.exists() and target.stat().st_size > 1_000_000:
         return str(target)
 
-    with httpx.stream("GET", DOWNLOAD, follow_redirects=True, timeout=120.0) as r:
-        r.raise_for_status()
-        total = int(r.headers.get("content-length") or 0)
-        done = 0
-        with open(target, "wb") as fh:
-            for chunk in r.iter_bytes(1 << 20):
-                fh.write(chunk)
-                done += len(chunk)
-                if total:
-                    print(f"\r  OS Open UPRN {done / 1e6:,.0f}/{total / 1e6:,.0f} MB", end="", flush=True)
-        print()
+    from ..net import download as stream_to
+
+    stream_to(DOWNLOAD, target, progress="OS Open UPRN")
     return str(target)
 
 
